@@ -1,35 +1,29 @@
 #!/bin/bash
 
+# Output file
 OUTPUT_FILE="project_summary.txt"
 
-# Check if in a git repo
-if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  echo "Error: This is not a Git repository."
-  exit 1
-fi
-
-# Clear or create the output file
+# Clear the output file if it exists
 > "$OUTPUT_FILE"
 
-# Print the file tree of Git-tracked files
+# === TREE STRUCTURE ===
 echo "==== Project File Tree ====" >> "$OUTPUT_FILE"
-TMP_DIR=$(mktemp -d)
+tree -a -I "node_modules|.git|package-lock.json|.gitignore|LICENSE|project_summary.sh|$OUTPUT_FILE|public/assets" >> "$OUTPUT_FILE"
 
-# Reconstruct file structure from git-tracked files
-git ls-files | while read -r file; do
-  mkdir -p "$TMP_DIR/$(dirname "$file")"
-  touch "$TMP_DIR/$file"
-done
-
-tree "$TMP_DIR" >> "$OUTPUT_FILE"
-rm -rf "$TMP_DIR"
-
-# Add file contents
 echo -e "\n\n==== File Contents ====" >> "$OUTPUT_FILE"
 
-git ls-files | while read -r file; do
-  echo -e "\n\n--- FILE: $file ---" >> "$OUTPUT_FILE"
-  cat "$file" >> "$OUTPUT_FILE"
+# === FILE CONTENTS ===
+find . -type f \
+  ! -path "./node_modules/*" \
+  ! -path "./.git/*" \
+  ! -path "./public/assets/*" \
+  ! -name "package-lock.json" \
+  ! -name ".gitignore" \
+  ! -name "LICENSE" \
+  ! -name "project_summary.sh" \
+  ! -name "$OUTPUT_FILE" | while read -r file; do
+    echo -e "\n\n--- FILE: $file ---" >> "$OUTPUT_FILE"
+    cat "$file" >> "$OUTPUT_FILE"
 done
 
-echo "✅ Done! See $OUTPUT_FILE"
+echo "✅ Done! See $OUTPUT_FILE for the full project summary."

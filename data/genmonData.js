@@ -1,28 +1,43 @@
 const genmonData = {
-    "Pikachu": {
-        id: "Pika01",
-        name: "Pikachu",
-        type: ["Electric"],
-        stats: { hp: 35, atk: 55, def: 40, spd: 90 },
-        moves: ["Thunder Shock", "Quick Attack"],
-        sprite: "/assets/pikachu.png"
-    },
-    "Charmander": {
-        id: "Char01",
-        name: "Charmander",
+    "Flufflame": {
+        id: "Fluff01",
+        name: "Flufflame",
         type: ["Fire"],
-        stats: { hp: 39, atk: 52, def: 43, spd: 65 },
-        moves: ["Scratch", "Ember"],
-        sprite: "/assets/charmander.png"
+        stats: { hp: 45, atk: 60, def: 40, spd: 70 },
+        moves: ["Fur Blaze", "Hot Pounce"],
+        sprite: "/assets/flufflame.png",
+        description: "A small red-and-orange fox-like creature with a fluffy tail that glows like embers. It has big curious eyes, ember-tipped ears, and leaves fiery pawprints wherever it walks."
+    },
+    "Aquaphin": {
+        id: "Aqua01",
+        name: "Aquaphin",
+        type: ["Water"],
+        stats: { hp: 50, atk: 45, def: 55, spd: 60 },
+        moves: ["Bubble Jet", "Tail Slap"],
+        sprite: "/assets/aquaphin.png",
+        description: "A playful blue dolphin-like Genmon with glowing aqua fins and a crystal-like orb on its forehead. Its body shimmers like flowing water, and it can hover briefly using water jets."
+    },
+    "Thorncub": {
+        id: "Thorn01",
+        name: "Thorncub",
+        type: ["Grass"],
+        stats: { hp: 55, atk: 50, def: 50, spd: 55 },
+        moves: ["Vine Snap", "Leaf Dash"],
+        sprite: "/assets/thorncub.png",
+        description: "A green cub-shaped Genmon with vines wrapping its legs and small leaves sprouting from its back. Its tail ends in a thorny bud, and it growls softly with a leafy crunch underfoot."
     },
 };
 
 const moveData = {
-    "Thunder Shock": { power: 40, type: "Electric", accuracy: 100 },
-    "Quick Attack": { power: 40, type: "Normal", accuracy: 100, priority: 1 },
-    "Scratch": { power: 40, type: "Normal", accuracy: 100 },
-    "Ember": { power: 40, type: "Fire", accuracy: 100 },
-}
+    "Fur Blaze": { power: 45, type: "Fire", accuracy: 100, effect: "May burn (10%)" },
+    "Hot Pounce": { power: 50, type: "Fire", accuracy: 95, priority: 1 },
+
+    "Bubble Jet": { power: 40, type: "Water", accuracy: 100, effect: "May lower speed (10%)" },
+    "Tail Slap": { power: 35, type: "Normal", accuracy: 100 },
+
+    "Vine Snap": { power: 45, type: "Grass", accuracy: 100, effect: "May cause flinch (10%)" },
+    "Leaf Dash": { power: 50, type: "Grass", accuracy: 95, priority: 1 },
+};
 
 const typeEffectiveness = {
     "Electric": { "Water": 2, "Ground": 0, "Flying": 2, "Electric": 0.5 },

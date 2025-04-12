@@ -74,7 +74,7 @@ wss.on('connection', (ws) => {
     const startX = Math.floor(Math.random() * ARENA_WIDTH);
     const startY = Math.floor(Math.random() * ARENA_HEIGHT);
     // Assign a default Genmon (simple example)
-    const playerGenmon = JSON.parse(JSON.stringify(Object.values(genmonData)[Math.random() < 0.5 ? 0 : 1])); // Deep copy Pikachu or Charmander
+    const playerGenmon = JSON.parse(JSON.stringify(Object.values(genmonData)[Math.random() < 0.5 ? 0 : 1])); // Randomly pick between two Genmons
 
     players[playerId] = {
         ws: ws,
