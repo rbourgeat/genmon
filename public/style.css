@@ -1,0 +1,173 @@
+/* style.css */
+body {
+    font-family: sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background-color: #f0f0f0;
+}
+
+.game-container {
+    display: flex;
+    gap: 20px;
+    margin-top: 20px;
+    align-items: flex-start; /* Align tops */
+}
+
+#arena-map {
+    display: grid;
+    /* Grid columns/rows set by JS */
+    border: 2px solid #555;
+    background-color: #a3d9a5; /* Light green grass */
+    position: relative; /* For positioning players absolutely */
+    width: 400px; /* Example size */
+    height: 400px; /* Example size */
+    box-sizing: border-box;
+}
+
+.grid-cell {
+    border: 1px solid #ddd;
+    box-sizing: border-box;
+    /* Make cells square */
+     width: 40px; /* Example size = map_width / grid_cols */
+     height: 40px; /* Example size = map_height / grid_rows */
+}
+
+/* Player representation on map */
+.player-marker {
+    position: absolute;
+    width: 38px; /* Slightly smaller than cell */
+    height: 38px;
+    border-radius: 50%;
+    background-color: blue; /* Default */
+    border: 1px solid black;
+    transition: top 0.2s linear, left 0.2s linear; /* Smooth movement */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 10px;
+    color: white;
+    overflow: hidden; /* Hide text overflow */
+    z-index: 10;
+    box-sizing: border-box;
+}
+
+.player-marker.in-battle {
+    border: 3px dashed red; /* Indicate player is in battle */
+}
+
+
+/* Player marker sprites */
+.player-marker img {
+    max-width: 90%;
+    max-height: 90%;
+    image-rendering: pixelated; /* Keep pixel art crisp */
+}
+
+
+.ui-panel {
+    border: 1px solid #ccc;
+    padding: 15px;
+    background-color: #fff;
+    min-width: 250px;
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+}
+
+#connection-status {
+    margin-top: 10px;
+    font-weight: bold;
+}
+#connection-status.connected {
+    color: green;
+}
+#connection-status.disconnected {
+    color: red;
+}
+
+#battle-interface {
+    margin-top: 15px;
+    border-top: 1px solid #eee;
+    padding-top: 10px;
+}
+
+#battle-log-container {
+    margin-top: 15px;
+    max-height: 150px;
+    overflow-y: auto;
+    border: 1px solid #eee;
+    padding: 5px;
+    font-size: 0.9em;
+}
+
+#battle-log {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+#battle-log li {
+    margin-bottom: 3px;
+    padding-bottom: 3px;
+    border-bottom: 1px dotted #ccc;
+}
+#battle-log li:last-child {
+    border-bottom: none;
+}
+
+/* HP Bars */
+.hp-bar-container {
+    width: 100%;
+    height: 20px;
+    background-color: #e0e0e0;
+    border-radius: 5px;
+    border: 1px solid #aaa;
+    overflow: hidden; /* Keep bar inside */
+    margin-top: 5px;
+}
+
+.hp-bar {
+    height: 100%;
+    width: 100%; /* Start full */
+    background-color: #4CAF50; /* Green */
+    border-radius: 4px 0 0 4px; /* Round left corners */
+    transition: width 0.5s ease-in-out; /* Smooth transition */
+    text-align: right;
+    color: white;
+    font-size: 12px;
+    line-height: 20px;
+    padding-right: 5px;
+    box-sizing: border-box;
+}
+.hp-bar.medium {
+    background-color: #ffc107; /* Yellow */
+}
+.hp-bar.low {
+    background-color: #f44336; /* Red */
+}
+
+/* Move Buttons */
+.move-buttons-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr); /* Two columns */
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.move-buttons-grid button {
+    padding: 10px;
+    cursor: pointer;
+    background-color: #e7e7e7;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+.move-buttons-grid button:hover:not(:disabled) {
+    background-color: #ddd;
+}
+.move-buttons-grid button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+#battle-turn-indicator {
+    font-weight: bold;
+    min-height: 1.2em; /* Prevent layout shift */
+}

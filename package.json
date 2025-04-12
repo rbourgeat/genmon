@@ -1,0 +1,16 @@
+{
+    "name": "genmon",
+    "version": "1.0.0",
+    "description": "Multiplayer Monster Battle Arena",
+    "main": "server.js",
+    "scripts": {
+      "start": "node server.js",
+      "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "keywords": ["genmon", "multiplayer", "websockets"],
+    "author": "rbourgeat",
+    "license": "MIT",
+    "dependencies": {
+      "ws": "^8.13.0"
+    }
+  }
