@@ -3,25 +3,28 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    background-color: #2d2d2d; /* Dark background */
-    color: #e0e0e0; /* Light text */
+    background-color: #2d2d2d;
+    color: #e0e0e0;
     margin: 0;
     padding: 10px;
+    min-height: 100vh; /* Ensure body takes full height */
 }
 
 h1, h2, h3 {
     margin-top: 0;
     margin-bottom: 0.5em;
-    color: #f5f5f5; /* Brighter headings */
+    color: #f5f5f5;
 }
 
 .game-container {
     display: flex;
-    flex-wrap: wrap; /* Allow wrapping on smaller screens */
+    flex-wrap: wrap; /* Allow wrapping */
     gap: 20px;
     margin-top: 10px;
-    align-items: flex-start;
-    justify-content: center; /* Center map and UI */
+    align-items: flex-start; /* Align tops */
+    justify-content: center;
+    width: 100%; /* Allow container to take width */
+    max-width: 1200px; /* Optional max width */
 }
 
 #connection-status {
@@ -29,132 +32,159 @@ h1, h2, h3 {
     font-weight: bold;
     min-height: 1.2em;
 }
-#connection-status.connected { color: #77dd77; } /* Brighter green */
-#connection-status.disconnected { color: #f44336; } /* Keep red */
+#connection-status.connected { color: #77dd77; }
+#connection-status.disconnected { color: #f44336; }
 
 /* --- Map Area --- */
 #map-container {
-     border: 3px solid #555; /* Lighter border for contrast */
-     background-color: #1a1a1a; /* Very dark background for map area */
-     padding: 5px; /* Small padding around the map */
-     box-shadow: 3px 3px 8px rgba(0,0,0,0.5); /* Adjusted shadow */
+     border: 3px solid #555;
+     background-color: #1a1a1a;
+     padding: 5px;
+     box-shadow: 3px 3px 8px rgba(0,0,0,0.5);
+     /* Ensure map container doesn't shrink unnecessarily */
+     flex-shrink: 0;
  }
 
-#arena-map { /* Was grid, now map tiles */
+#arena-map {
     display: grid;
-    border: 1px solid #444; /* Border around the tile grid itself */
-    position: relative; /* For positioning players */
+    border: 1px solid #444;
+    position: relative; /* Crucial for absolute player markers */
     /* width/height/columns/rows set by JS */
     box-sizing: border-box;
-    background-color: #333; /* Fallback if tiles fail */
+    background-color: #333; /* Fallback */
+    overflow: hidden; /* Prevent markers from spilling outside grid */
 }
 
 .tile {
     /* width/height set by JS via cellSize */
     box-sizing: border-box;
-    border: 1px solid rgba(255,255,255,0.05); /* Subtle light grid lines */
-    font-size: 10px; /* For debug text */
+    border: 1px solid rgba(255,255,255,0.05);
+    font-size: 10px;
     display: flex;
     justify-content: center;
     align-items: center;
     overflow: hidden;
-    color: #aaa; /* Dimmer debug text */
+    color: #aaa;
 }
 .tile:hover {
-    outline: 1px dashed yellow; /* Indicate hover */
+    outline: 1px dashed yellow;
     cursor: pointer;
 }
 
-/* Tile Types - Keep original colors for visual distinction, maybe slightly desaturated */
-.tile-path { background-color: #a89a81; } /* Slightly desaturated Sandy path */
-.tile-grass { background-color: #66c966; } /* Slightly desaturated Green grass */
-.tile-obstacle { background-color: #7a3d10; } /* Slightly desaturated Brown obstacle */
-.tile-unknown { background-color: #ff00ff; } /* Magenta for errors */
+/* Tile Types */
+.tile-path { background-color: #a89a81; }
+.tile-grass { background-color: #66c966; }
+.tile-obstacle { background-color: #7a3d10; cursor: not-allowed; } /* No pointer for obstacles */
+.tile-unknown { background-color: #ff00ff; }
 
 
-/* Player representation on map */
+/* Player marker on map */
 .player-marker {
     position: absolute;
-    width: 38px; /* Slightly smaller than cell */
+    width: 38px;
     height: 38px;
-    border: 1px solid #ccc; /* Light border for visibility */
-    transition: top 0.2s linear, left 0.2s linear; /* Smooth movement */
+    /* Center the marker within its grid cell */
+    margin-left: 1px;
+    margin-top: 1px;
+    border: 1px solid #ccc;
+    transition: top 0.2s linear, left 0.2s linear;
     z-index: 10;
     box-sizing: border-box;
-    display: flex; /* Center image */
+    display: flex;
     justify-content: center;
     align-items: center;
-    overflow: hidden; /* Clip image if needed */
-    pointer-events: none; /* Don't intercept clicks meant for the tile below */
+    overflow: hidden;
+    pointer-events: none; /* Click goes to the tile below */
+    background-color: rgba(0, 0, 0, 0.2); /* Slight background in case image fails */
 }
 
 .player-marker img {
+    display: block; /* Remove extra space below image */
     max-width: 100%;
     max-height: 100%;
-    image-rendering: pixelated; /* Keep pixel art crisp */
+    image-rendering: pixelated; /* Crisp pixel art */
+    object-fit: contain; /* Ensure image fits without stretching */
 }
 
 .player-marker.in-battle {
-    /* Use animation or stronger border */
-    outline: 3px dashed #f44336; /* Red outline */
+    outline: 3px dashed #f44336;
     animation: pulse-red 1s infinite;
 }
 
 @keyframes pulse-red {
-  0% { outline-color: rgba(244, 67, 54, 0.8); }
-  50% { outline-color: rgba(244, 67, 54, 0.4); }
-  100% { outline-color: rgba(244, 67, 54, 0.8); }
+  0% { outline-color: rgba(244, 67, 54, 1); }
+  50% { outline-color: rgba(244, 67, 54, 0.5); }
+  100% { outline-color: rgba(244, 67, 54, 1); }
 }
 
 
 /* --- UI Panel --- */
 .ui-panel {
-    border: 1px solid #555; /* Lighter border */
+    border: 1px solid #555;
     padding: 15px;
-    background-color: #3a3a3a; /* Dark background for panel */
-    color: #e0e0e0; /* Light text */
-    min-width: 300px; /* Slightly wider */
-    max-width: 400px;
-    box-shadow: 2px 2px 5px rgba(0,0,0,0.4); /* Adjusted shadow */
+    background-color: #3a3a3a;
+    color: #e0e0e0;
+    width: 350px; /* Fixed width */
+    max-width: 90%; /* Responsive */
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.4);
     display: flex;
     flex-direction: column;
-    gap: 15px; /* Space between sections */
+    gap: 15px;
+    flex-shrink: 0; /* Prevent shrinking */
 }
 
-/* Player Info Panel (Team) */
+/* Player Info Panel (Team outside battle) */
 #player-info-panel {
     display: flex;
     flex-direction: column;
     gap: 10px;
 }
 .active-genmon-summary {
-     border: 1px solid #4f4f4f; /* Adjusted border */
+     border: 1px solid #4f4f4f;
      padding: 10px;
-     background-color: #444; /* Slightly lighter dark */
- }
+     background-color: #444;
+}
+.active-genmon-summary h3 { margin-bottom: 5px;}
+
 
 #team-list {
     list-style: none;
     padding: 0;
     margin: 0;
-    max-height: 200px; /* Limit height and allow scroll */
+    max-height: 250px; /* Increased height */
     overflow-y: auto;
-    border: 1px solid #4f4f4f; /* Adjusted border */
+    border: 1px solid #4f4f4f;
+    background-color: #303030; /* Darker background for list */
 }
 
 .team-member {
-    padding: 8px;
-    border-bottom: 1px solid #4f4f4f; /* Adjusted border */
+    padding: 8px 10px;
+    border-bottom: 1px solid #4f4f4f;
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 10px;
-    background-color: #3a3a3a; /* Match panel background */
-    color: #e0e0e0; /* Ensure light text */
+    background-color: #3a3a3a;
+    color: #e0e0e0;
+    transition: background-color 0.2s;
 }
 .team-member:last-child { border-bottom: none; }
-.team-member.active { background-color: #2a5a60; font-weight: bold;} /* Darker cyan */
-.team-member.fainted { opacity: 0.6; background-color: #6d4c4c; } /* Darker faded red */
+.team-member.active { background-color: #2a5a60; font-weight: bold;}
+.team-member.fainted { opacity: 0.6; background-color: #6d4c4c; }
+
+/* Swap Selection Styling */
+.team-member.selectable-swap {
+    cursor: pointer;
+    background-color: #4a6a4a; /* Greenish background */
+}
+.team-member.selectable-swap:hover {
+    background-color: #5a8a5a; /* Brighter green on hover */
+}
+.team-member.disabled-swap {
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
 
 .team-member span:first-child { flex-grow: 1; } /* Allow name to take space */
 .team-buttons { display: flex; gap: 5px; }
@@ -162,18 +192,30 @@ h1, h2, h3 {
     padding: 3px 6px;
     font-size: 0.8em;
     cursor: pointer;
-    background-color: #555; /* Darker buttons */
-    color: #e0e0e0; /* Light text */
+    background-color: #555;
+    color: #e0e0e0;
     border: 1px solid #666;
+    border-radius: 3px;
 }
 .team-buttons button:hover { background-color: #666; }
-.release-button { background-color: #884444; } /* Dark red button */
+.release-button { background-color: #884444; }
 .release-button:hover { background-color: #995555; }
-
+.cancel-swap-button {
+    display: block; /* Make it block level */
+    width: calc(100% - 20px); /* Full width minus padding */
+    margin: 10px auto 0; /* Centered below list */
+    padding: 8px;
+    background-color: #7a6d55;
+    border: 1px solid #8a7d65;
+    color: #eee;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.cancel-swap-button:hover { background-color: #8a7d65; }
 
 /* --- Battle Interface --- */
 #battle-interface {
-    border-top: 1px solid #4f4f4f; /* Adjusted border */
+    border-top: 1px solid #4f4f4f;
     padding-top: 10px;
 }
 .battle-sides-container {
@@ -183,13 +225,33 @@ h1, h2, h3 {
      margin-bottom: 15px;
 }
 .battle-participant {
-     flex: 1; /* Take equal width */
-     border: 1px solid #4f4f4f; /* Adjusted border */
+     flex: 1;
+     border: 1px solid #4f4f4f;
      padding: 10px;
-     background-color: #444; /* Slightly lighter dark */
+     background-color: #444;
+     text-align: center; /* Center content */
+     transition: outline 0.3s ease-out; /* For flash */
+     position: relative; /* For absolute positioning if needed later */
 }
-#battle-player-info { border-left: 3px solid #4CAF50; } /* Keep Green marker */
-#battle-opponent-info { border-right: 3px solid #f44336; } /* Keep Red marker */
+.battle-participant img {
+    display: block;
+    margin: 5px auto; /* Center sprite */
+    max-width: 80px; /* Control sprite size */
+    max-height: 80px;
+    image-rendering: pixelated;
+    object-fit: contain;
+}
+
+#battle-player-info { border-left: 3px solid #4CAF50; }
+#battle-opponent-info { border-right: 3px solid #f44336; }
+
+.battle-participant h3 { font-size: 1em; margin-bottom: 5px;}
+.battle-participant p { font-size: 0.9em; margin: 5px 0;}
+
+/* Flash effect */
+.flash {
+    outline: 3px solid yellow;
+}
 
 
 #battle-controls { margin-top: 15px; }
@@ -197,7 +259,7 @@ h1, h2, h3 {
 .action-buttons-grid,
 .move-buttons-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr); /* Two columns */
+    grid-template-columns: repeat(2, 1fr);
     gap: 10px;
     margin-top: 10px;
 }
@@ -205,23 +267,25 @@ h1, h2, h3 {
 .move-buttons-grid button {
     padding: 12px;
     cursor: pointer;
-    background-color: #5a5a5a; /* Darker button */
-    color: #f0f0f0; /* Light text */
-    border: 1px solid #666; /* Lighter border */
+    background-color: #5a5a5a;
+    color: #f0f0f0;
+    border: 1px solid #666;
     border-radius: 4px;
     font-size: 1em;
+    transition: background-color 0.2s;
 }
 .action-buttons-grid button:hover:not(:disabled),
 .move-buttons-grid button:hover:not(:disabled) {
-    background-color: #6a6a6a; /* Slightly lighter hover */
+    background-color: #6a6a6a;
 }
 .action-buttons-grid button:disabled,
 .move-buttons-grid button:disabled {
     cursor: not-allowed;
     opacity: 0.6;
+    background-color: #4f4f4f; /* Darker disabled background */
 }
 .move-buttons-grid .back-button {
-     background-color: #7a6d55; /* Darker orange/brown for Back */
+     background-color: #7a6d55;
 }
 .move-buttons-grid .back-button:hover:not(:disabled) {
     background-color: #8a7d65;
@@ -230,49 +294,54 @@ h1, h2, h3 {
 
 #battle-log-container {
     margin-top: 15px;
-    max-height: 150px;
-    overflow-y: auto;
-    border: 1px solid #4f4f4f; /* Adjusted border */
-    padding: 8px;
-    background-color: #303030; /* Darker log background */
-    color: #ccc; /* Slightly dimmer log text */
+    height: 150px; /* Fixed height */
+    overflow-y: auto; /* Enable scrolling */
+    border: 1px solid #4f4f4f;
+    padding: 10px;
+    background-color: #303030;
+    color: #ccc;
     font-size: 0.9em;
+    border-radius: 4px;
 }
 #battle-log { list-style: none; padding: 0; margin: 0; }
 #battle-log li { margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px dotted #555; }
 #battle-log li:last-child { border-bottom: none; }
-#battle-log .log-turn { font-weight: bold; color: #66aaff; } /* Lighter blue */
-#battle-log .log-win { color: #77dd77; } /* Lighter green */
-#battle-log .log-loss { color: #f44336; } /* Keep red */
-#battle-log .log-info { color: #aaa; } /* Lighter grey */
-#battle-log .log-error { color: #ffcc66; font-weight: bold; } /* Lighter orange */
+/* Log message types */
+#battle-log .log-normal { color: #ccc; }
+#battle-log .log-turn { font-weight: bold; color: #88ccff; } /* Brighter blue */
+#battle-log .log-win { color: #77dd77; font-weight: bold;}
+#battle-log .log-loss { color: #ff8888; font-weight: bold;} /* Lighter red */
+#battle-log .log-info { color: #aaa; font-style: italic; }
+#battle-log .log-error { color: #ffcc66; font-weight: bold; }
 
 
 /* HP Bars */
 .hp-bar-container {
     width: 100%;
     height: 20px;
-    background-color: #555; /* Dark background */
+    background-color: #555;
     border-radius: 5px;
-    border: 1px solid #777; /* Lighter border */
+    border: 1px solid #777;
     overflow: hidden;
     margin-top: 5px;
 }
 .hp-bar {
     height: 100%;
-    width: 100%;
-    background-color: #4CAF50; /* Green */
-    border-radius: 4px 0 0 4px;
-    transition: width 0.5s ease-in-out;
+    width: 100%; /* Default full */
+    background-color: #4CAF50; /* Default Green (high) */
+    border-radius: 4px 0 0 4px; /* Keep left radius */
+    transition: width 0.5s ease-in-out, background-color 0.5s ease-in-out; /* Animate color too */
     text-align: right;
     color: white;
     font-size: 12px;
     line-height: 20px;
     padding-right: 5px;
     box-sizing: border-box;
+    /* Remove text shadow for clarity */
 }
 .hp-bar.medium { background-color: #ffc107; } /* Yellow */
 .hp-bar.low { background-color: #f44336; } /* Red */
+.hp-bar.high { background-color: #4CAF50; } /* Explicit high class */
 
 
 /* Prompt styling */
@@ -280,28 +349,30 @@ h1, h2, h3 {
     border: 2px solid orange;
     padding: 15px;
     margin-top: 15px;
-    background-color: #4f4030; /* Dark orange background */
-    color: #f0e0d0; /* Light text */
+    background-color: #4f4030;
+    color: #f0e0d0;
     text-align: center;
+    border-radius: 5px;
 }
+.prompt p { margin-bottom: 10px; }
 .prompt button {
     padding: 8px 15px;
     margin: 0 10px;
     cursor: pointer;
-    background-color: #666; /* Dark buttons */
-    color: #eee; /* Light text */
+    background-color: #666;
+    color: #eee;
     border: 1px solid #888;
+    border-radius: 4px;
 }
-.prompt button:hover {
-    background-color: #777;
-}
+.prompt button:hover { background-color: #777; }
 
 #battle-turn-indicator {
     font-weight: bold;
-    min-height: 1.2em; /* Prevent layout shift */
+    min-height: 1.2em;
     text-align: center;
-    background-color: #444; /* Dark background */
-    color: #f0f0f0; /* Light text */
-    padding: 5px;
+    background-color: #444;
+    color: #f0f0f0;
+    padding: 8px; /* Increased padding */
     border-radius: 4px;
+    margin-bottom: 10px; /* Space below indicator */
 }

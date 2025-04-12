@@ -1,4 +1,9 @@
-// ./data/genmonData.js
+// Helper to generate unique IDs (used locally and exported)
+function generateUniqueId() {
+    return Math.random().toString(36).substring(2, 11);
+}
+
+
 const genmonData = {
     "Flufflame": {
         id: "Fluff01",
@@ -6,14 +11,9 @@ const genmonData = {
         type: ["Fire"],
         stats: { hp: 45, atk: 60, def: 40, spd: 70 },
         moves: ["Fur Blaze", "Hot Pounce"],
-        sprite: "/assets/flufflame.png", // Base sprite
-        // Add directional sprites later if available:
-        // spriteUp: "/assets/flufflame_up.png",
-        // spriteDown: "/assets/flufflame_down.png",
-        // spriteLeft: "/assets/flufflame_left.png",
-        // spriteRight: "/assets/flufflame_right.png",
+        sprite: "/assets/flufflame.png",
         description: "A small red-and-orange fox-like creature with a fluffy tail that glows like embers. It has big curious eyes, ember-tipped ears, and leaves fiery pawprints wherever it walks.",
-        catchRate: 180 // Example catch rate (0-255, higher is easier)
+        catchRate: 180
     },
     "Aquaphin": {
         id: "Aqua01",
@@ -38,96 +38,151 @@ const genmonData = {
 };
 
 const moveData = {
-    "Fur Blaze": { power: 45, type: "Fire", accuracy: 100, effect: "May burn (10%)" },
+    // Fire
+    "Fur Blaze": { power: 45, type: "Fire", accuracy: 100, priority: 0, effect: "May burn (10%)" }, 
     "Hot Pounce": { power: 50, type: "Fire", accuracy: 95, priority: 1 },
-    "Bubble Jet": { power: 40, type: "Water", accuracy: 100, effect: "May lower speed (10%)" },
-    "Tail Slap": { power: 35, type: "Normal", accuracy: 100 },
-    "Vine Snap": { power: 45, type: "Grass", accuracy: 100, effect: "May cause flinch (10%)" },
+
+    // Water
+    "Bubble Jet": { power: 40, type: "Water", accuracy: 100, priority: 0, effect: "May lower speed (10%)" },
+    "Tail Slap": { power: 35, type: "Normal", accuracy: 100, priority: 0 },
+    // Grass
+    "Vine Snap": { power: 45, type: "Grass", accuracy: 100, priority: 0, effect: "May cause flinch (10%)" },
     "Leaf Dash": { power: 50, type: "Grass", accuracy: 95, priority: 1 },
 
-    // Add a basic non-damaging move for catching
-    "Catch": { power: 0, type: "Normal", accuracy: 100, effect: "Attempt to catch" }
+    // Placeholder for Catch action (used internally, not selectable)
+    "Catch": { power: 0, type: "Normal", accuracy: 100, priority: 0, effect: "Attempt to catch" },
 };
 
-// --- Type Effectiveness (simplified, can be expanded) ---
+// --- Type Effectiveness ---
 const typeEffectiveness = {
-    "Fire": { "Grass": 2, "Water": 0.5, "Fire": 0.5 },
-    "Water": { "Fire": 2, "Water": 0.5, "Grass": 0.5 },
-    "Grass": { "Water": 2, "Fire": 0.5, "Grass": 0.5 },
-    "Normal": {},
+    "Fire": { "Grass": 2, "Water": 0.5, "Fire": 0.5, "Normal": 1 },
+    "Water": { "Fire": 2, "Water": 0.5, "Grass": 0.5, "Normal": 1 },
+    "Grass": { "Water": 2, "Fire": 0.5, "Grass": 0.5, "Normal": 1 },
+    "Normal": { "Fire": 1, "Water": 1, "Grass": 1, "Normal": 1 }, // Normal hits everything neutrally
     // Add other types as needed
 };
 
-// --- Damage Calculation (Remains similar, but might need adjustments) ---
-function calculateDamage(attackerGenmon, defenderGenmon, move) {
-    if (!move || !attackerGenmon || !defenderGenmon || move.power === 0) return 0; // No damage for non-power moves
-
-    // Basic Accuracy Check
-    if (Math.random() * 100 > move.accuracy) {
-        console.log(`${attackerGenmon.name}'s ${move.name} missed!`);
-        return 0; // Missed
-    }
-
-    const moveType = move.type;
-    let effectiveness = 1;
-
-    // Check defender's type(s) against move type
-    if (defenderGenmon.type && Array.isArray(defenderGenmon.type)) {
-        defenderGenmon.type.forEach(defType => {
-            if (typeEffectiveness[moveType] && typeEffectiveness[moveType][defType] !== undefined) {
-                effectiveness *= typeEffectiveness[moveType][defType];
-            }
+// Function to get effectiveness multiplier and message
+function getEffectiveness(moveType, defenderTypes) {
+    let multiplier = 1;
+    if (typeEffectiveness[moveType]) {
+        defenderTypes.forEach(defType => {
+            multiplier *= typeEffectiveness[moveType][defType] ?? 1; // Use 1 if type interaction undefined
         });
     }
 
-    // Simplified Damage Formula (adjust as needed)
-    const baseDamage = ((attackerGenmon.stats.atk / defenderGenmon.stats.def) * move.power) / 10 + 2;
+    let message = null;
+    if (multiplier > 1) message = "It's super effective!";
+    else if (multiplier < 1 && multiplier > 0) message = "It's not very effective...";
+    else if (multiplier === 0) message = "It had no effect.";
+
+    return { multiplier, message };
+}
+
+// --- Damage Calculation ---
+// Returns object: { damage: number, effectivenessMessage: string | null }
+function calculateDamage(attackerGenmon, defenderGenmon, move) {
+    if (!move || !attackerGenmon || !defenderGenmon || move.power === 0) {
+        return { damage: 0, effectivenessMessage: null }; // No damage for non-power moves
+    }
+
+    // Accuracy Check
+    if (Math.random() * 100 >= move.accuracy) {
+        console.log(`${attackerGenmon.name}'s ${move.name} missed!`);
+        return { damage: 0, effectivenessMessage: "But it missed!" }; // Missed
+    }
+
+    const moveType = move.type;
+    const defenderTypes = defenderGenmon.type || ["Normal"]; // Assume Normal if type is missing
+
+    // Get Effectiveness
+    const { multiplier: effectiveness, message: effectivenessMessage } = getEffectiveness(moveType, defenderTypes);
+
+    // If immune, return 0 damage
+    if (effectiveness === 0) {
+         console.log(`${move.name} had no effect on ${defenderGenmon.name}.`);
+        return { damage: 0, effectivenessMessage: effectivenessMessage };
+    }
+
+    // Simplified Damage Formula
+    // Using basic formula, can be expanded (Level, STAB, Critical Hits, etc.)
+    const attackStat = attackerGenmon.stats.atk || 10; // Use default if missing
+    const defenseStat = defenderGenmon.stats.def || 10;
+    const baseDamage = ((attackStat / defenseStat) * move.power * 0.2) + 2; // Adjusted scaling
     const randomFactor = (Math.random() * 0.15 + 0.85); // 85% to 100% damage randomness
 
     let finalDamage = Math.floor(baseDamage * effectiveness * randomFactor);
 
-    console.log(`${attackerGenmon.name} (${attackerGenmon.stats.atk} Atk) vs ${defenderGenmon.name} (${defenderGenmon.stats.def} Def) using ${move.name} (Power ${move.power}, Type ${moveType}, Effectiveness ${effectiveness}). Base: ${baseDamage.toFixed(2)}, Random: ${randomFactor.toFixed(2)}, Final: ${finalDamage}`);
+    // Ensure minimum 1 damage if it's not immune and the move has power
+    if (finalDamage < 1 && effectiveness > 0 && move.power > 0) {
+         finalDamage = 1;
+    }
 
+    console.log(`${attackerGenmon.name} (${attackStat} Atk) vs ${defenderGenmon.name} (${defenseStat} Def) using ${move.name} (Power ${move.power}, Type ${moveType}, Eff ${effectiveness}). Base: ${baseDamage.toFixed(1)}, Rand: ${randomFactor.toFixed(2)}, Final: ${finalDamage}`);
 
-    return Math.max(1, finalDamage); // Minimum 1 damage
+    return { damage: finalDamage, effectivenessMessage: effectivenessMessage };
 }
 
 
-// --- Catch Calculation (Simplified) ---
-function calculateCatchSuccess(wildGenmon, playerTeamHpFactor = 1) { // playerTeamHpFactor unused for now
-    const baseRate = wildGenmon.catchRate || 100; // Default if undefined
-    const hpFactor = (wildGenmon.stats.hp * 3 - wildGenmon.currentHp * 2) / (wildGenmon.stats.hp * 3);
-    const catchValue = Math.floor(((baseRate + 1) / 256) * hpFactor * 100); // Simplified chance %
+// --- Catch Calculation ---
+function calculateCatchSuccess(wildGenmon) {
+    if (!wildGenmon || !wildGenmon.stats || wildGenmon.currentHp === undefined) return false;
+
+    const maxHp = wildGenmon.stats.hp;
+    const currentHp = wildGenmon.currentHp;
+    const baseRate = wildGenmon.catchRate || 100; // Use defined rate or default
+
+    // Formula inspired by Bulbapedia (simplified - ignores ball bonuses, status)
+    // Calculate 'a' value
+    const hpFactor = (maxHp === 0) ? 1 : Math.max(1, (3 * maxHp - 2 * currentHp) / (3 * maxHp)); // Avoid division by zero, ensure factor >= 1? No, low HP increases chance. Max ensures > 0.
+    const a = hpFactor * baseRate;
+
+    // Calculate catch probability (simplified from shake checks)
+    // Using a simpler direct chance calculation for now
+    const catchValue = Math.max(1, Math.floor(a)) / 255; // Chance out of 255, ensure at least 1
+    const catchChancePercent = Math.min(100, catchValue * 100); // Convert to percentage
 
     const randomRoll = Math.random() * 100;
-    console.log(`Catch attempt: Rate=${baseRate}, HP Factor=${hpFactor.toFixed(2)}, Chance=${catchValue.toFixed(2)}%, Rolled=${randomRoll.toFixed(2)}`);
 
-    return randomRoll < catchValue;
+    console.log(`Catch attempt: Rate=${baseRate}, MaxHP=${maxHp}, CurrHP=${currentHp}, HP Factor=${hpFactor.toFixed(2)}, 'a'=${a.toFixed(2)}, Chance=${catchChancePercent.toFixed(2)}%, Rolled=${randomRoll.toFixed(2)}`);
+
+    return randomRoll < catchChancePercent;
 }
 
 
-// Helper to create a unique instance of a Genmon for teams/wild encounters
+// --- Create Genmon Instance ---
+// Creates a fresh copy of a Genmon with full HP and a unique ID.
 function createGenmonInstance(baseGenmonId) {
     const baseData = genmonData[baseGenmonId];
-    if (!baseData) return null;
-    // Deep copy to avoid modifying original data
+    if (!baseData) {
+        console.error(`Genmon base data not found for ID: ${baseGenmonId}`);
+        return null;
+    }
+    // Deep copy to prevent modifying the original data object
     const instance = JSON.parse(JSON.stringify(baseData));
-    instance.currentHp = instance.stats.hp; // Start with full HP
-    instance.uniqueId = generateUniqueId(); // Give it a unique ID within the team/battle
-    // Add status effects etc. later
+
+    // Ensure stats object exists
+    instance.stats = instance.stats || { hp: 30, atk: 30, def: 30, spd: 30 }; // Basic default stats
+
+    // Initialize currentHp to max HP
+    instance.currentHp = instance.stats.hp;
+
+    // Assign a unique ID to this specific instance
+    instance.uniqueId = generateUniqueId();
+
+    // Add other potential initial state properties here (e.g., status effects: null)
+    instance.status = null;
+
     return instance;
 }
 
-// Needs a unique ID generator if not already present
-function generateUniqueId() {
-    return Math.random().toString(36).substring(2, 11);
-}
 
 module.exports = {
     genmonData,
     moveData,
+    typeEffectiveness, // Export if needed elsewhere
     calculateDamage,
     calculateCatchSuccess,
     createGenmonInstance,
-    generateUniqueId // Export if needed elsewhere, like server.js
+    generateUniqueId // Export for potential use in other modules if needed
 };
