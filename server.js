@@ -1,25 +1,17 @@
+// FILE: ./server.js
 const WebSocket = require('ws');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-// Game Logic Modules
 const gameState = require('./game/gameState');
 const { generateUniqueId, sendInfo, broadcast } = require('./game/utils');
-const { mapData, TILE_OBSTACLE, MAP_WIDTH, MAP_HEIGHT } = require('./game/constants');
+const { mapData, TILE_OBSTACLE, MAP_WIDTH, MAP_HEIGHT, INITIAL_MONEY, INITIAL_LEVEL } = require('./game/constants');
 const { getPublicPlayerData, getPrivatePlayerData, handleSwapGenmonTeam, handleReleaseGenmon } = require('./game/player');
 const { handlePlayerMove } = require('./game/map');
-const {
-    startWildBattle,
-    handleInitiateDuel,
-    handleRespondDuel,
-    startDuel,
-    requestPlayerAction,
-    handlePlayerAction, // Handles multiple action types now
-    handleBattleEnd,
-    handlePlayerDisconnectBattle,
-} = require('./game/battle');
-const { createGenmonInstance, genmonData } = require('./data/genmonData'); // Import base data if needed for starting team
+// Import from the new battle index file
+const battle = require('./game/battle'); // Imports all exported battle functions
+const { createGenmonInstance, genmonData } = require('./data/genmonData');
 
 const PORT = process.env.PORT || 3000;
 
@@ -68,41 +60,37 @@ wss.on('connection', (ws) => {
     console.log(`Client connected: ${playerId}`);
 
     // Add reference to the server instance on the WebSocket object
-    // This allows broadcast function in utils to access wss.clients
     ws.server = wss;
 
-    // Find a valid starting position (not obstacle)
+    // Find a valid starting position
     let startX, startY;
     do {
         startX = Math.floor(Math.random() * MAP_WIDTH);
         startY = Math.floor(Math.random() * MAP_HEIGHT);
-    } while (mapData[startY][startX] === TILE_OBSTACLE);
+    } while (mapData[startY] && mapData[startY][startX] === TILE_OBSTACLE); // Added check for mapData[startY]
 
     // Assign starting Genmon team
-    // Ensure starting team always has at least one Genmon
     const availableGenmonIds = Object.keys(genmonData);
     let startingTeam = [];
     if (availableGenmonIds.length > 0) {
         const startingGenmonId = availableGenmonIds[Math.floor(Math.random() * availableGenmonIds.length)];
-        const startingGenmonInstance = createGenmonInstance(startingGenmonId);
+        const startingGenmonInstance = createGenmonInstance(startingGenmonId, INITIAL_LEVEL);
         if (startingGenmonInstance) {
             startingTeam.push(startingGenmonInstance);
         }
     }
-    // Add a default if creation failed or no data available? For robustness:
     if (startingTeam.length === 0) {
          console.warn("Could not create starting Genmon. Player will start with an empty team.");
-         // Or force a default like: const defaultInstance = createGenmonInstance("Flufflame"); if (defaultInstance) startingTeam.push(defaultInstance);
     }
 
-
-    // Store player data in central state
+    // Store player data
     const playerData = {
         ws: ws,
         id: playerId,
         x: startX,
         y: startY,
-        direction: 'down', // Default direction
+        direction: 'down',
+        money: INITIAL_MONEY,
         team: startingTeam,
         activeGenmonIndex: 0,
         inBattle: false,
@@ -110,32 +98,42 @@ wss.on('connection', (ws) => {
     };
     gameState.addPlayer(playerId, playerData);
 
-    // Send initial state to the new player
-    ws.send(JSON.stringify({
-        type: 'INIT',
-        payload: {
-            playerId: playerId,
-            players: getPublicPlayerData(), // Send simplified data of others
-            mapData: mapData, // Send map data
-            yourPlayer: getPrivatePlayerData(playerId) // Send detailed own data
-        }
-    }));
+    // Send initial state
+    const initialPayload = {
+        playerId: playerId,
+        players: getPublicPlayerData(), // Send simplified data of others
+        mapData: mapData,
+        yourPlayer: getPrivatePlayerData(playerId) // Send detailed own data
+    };
+     // Validate payload before sending
+     if (initialPayload.yourPlayer) {
+        ws.send(JSON.stringify({ type: 'INIT', payload: initialPayload }));
+     } else {
+          console.error(`Failed to get private player data for ${playerId} during INIT.`);
+          // Handle error - maybe close connection or send error message
+          ws.close(1011, "Server error initializing player data.");
+          gameState.removePlayer(playerId); // Clean up state
+          return; // Stop further processing for this connection
+     }
 
-    // Broadcast new player connection to others
-    broadcast(wss, gameState.getAllPlayers(), {
-        type: 'PLAYER_JOIN',
-        payload: { player: getPublicPlayerData(playerId) }
-    }, ws); // Exclude sender
+
+    // Broadcast new player connection
+    const publicJoinData = getPublicPlayerData(playerId);
+    if (publicJoinData) {
+         broadcast(wss, gameState.getAllPlayers(), {
+             type: 'PLAYER_JOIN',
+             payload: { player: publicJoinData }
+         }, ws);
+    }
 
     // Handle messages
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
-            // console.log(`Received from ${playerId}:`, data); // Debugging
             handleClientMessage(playerId, data);
         } catch (error) {
             console.error(`Failed to parse message or handle request from ${playerId}:`, message, error);
-            sendInfo(ws, `Server error processing your request: ${error.message}`);
+            sendInfo(ws, `Server error processing your request: ${error.message || 'Unknown error'}`);
         }
     });
 
@@ -151,14 +149,14 @@ wss.on('connection', (ws) => {
 function handleClientMessage(playerId, data) {
     const player = gameState.getPlayer(playerId);
     if (!player) {
-        console.log(`Message received from disconnected or unknown player ${playerId}: ${data.type}`);
+        console.log(`Message received from disconnected or unknown player ${playerId}: ${data?.type}`);
         return;
     }
 
-    // Refined check: Allow SWAP_GENMON_BATTLE only when in battle AND expecting an action or switch
-    const battle = player.inBattle ? gameState.getBattle(player.currentBattleId) : null;
+    // Check if player is in a battle
+    const currentBattle = player.inBattle && player.currentBattleId ? gameState.getBattle(player.currentBattleId) : null;
 
-    // Actions allowed only IN battle
+    // Actions allowed only IN battle (and battle exists)
     const battleActions = ['SELECT_MOVE', 'ATTEMPT_CATCH', 'SWAP_GENMON_BATTLE', 'FLEE_BATTLE'];
     // Actions allowed only OUTSIDE battle
     const nonBattleActions = ['MOVE', 'INITIATE_DUEL', 'RESPOND_DUEL', 'SWAP_GENMON_TEAM', 'RELEASE_GENMON'];
@@ -166,7 +164,7 @@ function handleClientMessage(playerId, data) {
     // Basic checks
     if (player.inBattle && nonBattleActions.includes(data.type)) {
         sendInfo(player.ws, `Action ${data.type} not allowed during battle.`);
-        console.log(`Player ${playerId} attempted non-battle action ${data.type} while in battle.`);
+        console.log(`Player ${playerId} attempted non-battle action ${data.type} while in battle ${player.currentBattleId}.`);
         return;
     }
     if (!player.inBattle && battleActions.includes(data.type)) {
@@ -174,75 +172,67 @@ function handleClientMessage(playerId, data) {
         console.log(`Player ${playerId} attempted battle action ${data.type} while not in battle.`);
         return;
     }
-    // Specific battle action check: Can only act if it's your turn or you need to switch
-     if (battle && battleActions.includes(data.type)) {
-         const isWaitingForPlayer = battle.waitingForAction === playerId;
-         // Exception: Allow SWAP_GENMON_BATTLE even if not strictly waitingForAction if player *must* switch (e.g. after faint)
-         const mustSwitch = battle.type === 'PvP'
-             ? (playerId === battle.player1Id && battle.p1MustSwitch) || (playerId === battle.player2Id && battle.p2MustSwitch)
-             : (playerId === battle.playerId && battle.p1MustSwitch); // Assuming p1 is always the player in PvE
 
-         if (!isWaitingForPlayer && !(data.type === 'SWAP_GENMON_BATTLE' && mustSwitch)) {
-             console.log(`Player ${playerId} action ${data.type} received, but not waiting for their action.`);
-             sendInfo(player.ws, `Not currently waiting for your action.`);
-             return;
-         }
-     }
-
-
+    // Delegate to appropriate handler
     switch (data.type) {
         // --- Map Actions ---
         case 'MOVE':
-            handlePlayerMove(playerId, data.payload.direction);
+            handlePlayerMove(playerId, data.payload?.direction);
             break;
-
-        // --- Duel Actions ---
-        case 'INITIATE_DUEL':
-            handleInitiateDuel(playerId, data.payload.targetId);
-            break;
-        case 'RESPOND_DUEL':
-            handleRespondDuel(playerId, data.payload.challengerId, data.payload.accepted);
-            break;
-
-        // --- Battle Actions ---
-        // Forward all valid battle actions to handlePlayerAction
-        case 'SELECT_MOVE':
-             if (player.inBattle && player.currentBattleId) {
-                handlePlayerAction(playerId, player.currentBattleId, { type: 'move', moveName: data.payload.moveName });
-             }
-             break;
-        case 'ATTEMPT_CATCH':
-             if (player.inBattle && player.currentBattleId) {
-                 const battle = gameState.getBattle(player.currentBattleId);
-                 if (battle && battle.type === 'PvE') {
-                     handlePlayerAction(playerId, player.currentBattleId, { type: 'catch' });
-                 } else {
-                     sendInfo(player.ws, "Cannot catch in this type of battle!");
-                 }
-             }
-             break;
-        case 'FLEE_BATTLE':
-             if (player.inBattle && player.currentBattleId) {
-                 const battle = gameState.getBattle(player.currentBattleId);
-                  if (battle && battle.type === 'PvE') { // Allow flee only in PvE
-                     handlePlayerAction(playerId, player.currentBattleId, { type: 'flee' });
-                 } else {
-                     sendInfo(player.ws, "Cannot flee from this type of battle!");
-                 }
-             }
-             break;
-        case 'SWAP_GENMON_BATTLE':
-             if (player.inBattle && player.currentBattleId) {
-                 handlePlayerAction(playerId, player.currentBattleId, { type: 'swap', teamIndex: data.payload.teamIndex });
-             }
-             break;
 
         // --- Team Management (Outside Battle) ---
         case 'SWAP_GENMON_TEAM':
-             handleSwapGenmonTeam(playerId, data.payload.teamIndex);
+             handleSwapGenmonTeam(playerId, data.payload?.teamIndex);
              break;
         case 'RELEASE_GENMON':
-             handleReleaseGenmon(playerId, data.payload.teamIndex);
+             handleReleaseGenmon(playerId, data.payload?.teamIndex);
+             break;
+
+        // --- Duel Actions ---
+        case 'INITIATE_DUEL':
+            battle.handleInitiateDuel(playerId, data.payload?.targetId);
+            break;
+        case 'RESPOND_DUEL':
+            battle.handleRespondDuel(playerId, data.payload?.challengerId, data.payload?.accepted);
+            break;
+
+        // --- Battle Actions (Forward to battle module) ---
+        case 'SELECT_MOVE':
+        case 'ATTEMPT_CATCH':
+        case 'FLEE_BATTLE':
+        case 'SWAP_GENMON_BATTLE':
+             if (player.inBattle && player.currentBattleId && currentBattle) {
+                // Construct the action object based on type
+                let actionPayload;
+                switch (data.type) {
+                    case 'SELECT_MOVE':
+                        actionPayload = { type: 'move', moveName: data.payload?.moveName };
+                        break;
+                    case 'ATTEMPT_CATCH':
+                         if (currentBattle.type !== 'PvE') return sendInfo(player.ws, "Cannot catch in this type of battle!");
+                         actionPayload = { type: 'catch' };
+                         break;
+                    case 'FLEE_BATTLE':
+                         if (currentBattle.type !== 'PvE') return sendInfo(player.ws, "Cannot flee from this type of battle!");
+                         actionPayload = { type: 'flee' };
+                         break;
+                    case 'SWAP_GENMON_BATTLE':
+                         actionPayload = { type: 'swap', teamIndex: data.payload?.teamIndex };
+                         break;
+                    default: // Should not happen
+                         console.error("Unhandled battle action type in switch:", data.type);
+                         return;
+                }
+                // Validate action payload before sending
+                if (actionPayload && (actionPayload.type === 'move' ? actionPayload.moveName : true) && (actionPayload.type === 'swap' ? typeof actionPayload.teamIndex === 'number' : true)) {
+                    battle.handlePlayerAction(playerId, player.currentBattleId, actionPayload);
+                } else {
+                     console.warn(`Invalid payload for battle action ${data.type} from ${playerId}:`, data.payload);
+                     sendInfo(player.ws, `Invalid payload for action ${data.type}.`);
+                     // Potentially re-request action if validation fails badly
+                     // battle.requestPlayerAction(playerId, player.currentBattleId);
+                }
+             }
              break;
 
         default:
@@ -255,23 +245,34 @@ function handleClientMessage(playerId, data) {
 // --- Player Disconnect ---
 function handleDisconnect(playerId) {
     const player = gameState.getPlayer(playerId); // Get player data before removing
-    if (!player) return; // Already disconnected
+    if (!player) {
+         console.log(`Disconnect handler called for already removed player: ${playerId}`);
+         return; // Already disconnected or never fully connected
+    }
 
     console.log(`Client disconnected: ${playerId}`);
 
-    // If in battle, handle battle end due to disconnect
+    // If in battle, handle battle end due to disconnect using the battle module function
     if (player.inBattle && player.currentBattleId) {
-        handlePlayerDisconnectBattle(playerId); // Let battle logic handle ending
+        console.log(`Player ${playerId} disconnected during battle ${player.currentBattleId}. Handling battle end.`);
+        battle.handlePlayerDisconnectBattle(playerId); // Let battle logic handle ending cleanly
     }
+
+    // Get server instance before removing player (if needed for broadcast)
+    const wss = player.ws?.server;
 
     // Remove player from central state
     gameState.removePlayer(playerId);
 
-    // Broadcast player leave
-    broadcast(wss, gameState.getAllPlayers(), { // Pass wss and current players
-        type: 'PLAYER_LEAVE',
-        payload: { playerId: playerId }
-    });
+    // Broadcast player leave if wss is available
+    if (wss) {
+        broadcast(wss, gameState.getAllPlayers(), {
+            type: 'PLAYER_LEAVE',
+            payload: { playerId: playerId }
+        });
+    } else {
+        console.warn(`Could not broadcast PLAYER_LEAVE for ${playerId}, wss not found.`);
+    }
 }
 
 

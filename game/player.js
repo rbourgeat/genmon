@@ -20,6 +20,7 @@ function getPublicPlayerData(playerId = null) {
         // e.g., based on p.direction
 
         const genmonName = activeGenmon?.name || "---";
+        const genmonLevel = activeGenmon?.level || "?"; // Add level
 
         return {
             id: p.id,
@@ -28,7 +29,8 @@ function getPublicPlayerData(playerId = null) {
             direction: p.direction,
             sprite: sprite,
             inBattle: p.inBattle,
-            genmonName: genmonName
+            genmonName: genmonName,
+            genmonLevel: genmonLevel, // Include level
         };
     };
 
@@ -60,8 +62,9 @@ function getPrivatePlayerData(playerId) {
         // direction: p.direction,
         // inBattle: p.inBattle,
         // currentBattleId: p.currentBattleId,
-        team: p.team, // Full team data
+        team: p.team, // Full team data (includes level, xp etc)
         activeGenmonIndex: p.activeGenmonIndex,
+        money: p.money, // Include money
     };
 }
 
@@ -84,8 +87,8 @@ function handleSwapGenmonTeam(playerId, teamIndex) {
     const updatedPlayer = gameState.getPlayer(playerId); // Get updated player state
 
     sendInfo(updatedPlayer.ws, `Switched active Genmon to ${updatedPlayer.team[teamIndex].name}.`);
-    // Send updated private data (team + active index)
-    updatedPlayer.ws.send(JSON.stringify({ type: 'TEAM_UPDATE', payload: getPrivatePlayerData(playerId) }));
+    // Send updated private data (team + active index + money)
+    updatedPlayer.ws.send(JSON.stringify({ type: 'PLAYER_DATA_UPDATE', payload: getPrivatePlayerData(playerId) })); // Use a more general update type maybe?
     // Broadcast public data change (likely sprite change)
     broadcast(player.ws.server, gameState.getAllPlayers(), { type: 'PLAYER_UPDATE', payload: { player: getPublicPlayerData(playerId) } }, player.ws); // Exclude self
 }
@@ -121,7 +124,7 @@ function handleReleaseGenmon(playerId, teamIndex) {
 
     sendInfo(updatedPlayer.ws, `${releasedGenmon.name} was released.`);
     // Send updated private data
-    updatedPlayer.ws.send(JSON.stringify({ type: 'TEAM_UPDATE', payload: getPrivatePlayerData(playerId) }));
+    updatedPlayer.ws.send(JSON.stringify({ type: 'PLAYER_DATA_UPDATE', payload: getPrivatePlayerData(playerId) }));
     // Broadcast public data change (potentially active genmon/sprite change)
     broadcast(player.ws.server, gameState.getAllPlayers(), { type: 'PLAYER_UPDATE', payload: { player: getPublicPlayerData(playerId) } }, player.ws); // Exclude self
 }
@@ -138,15 +141,15 @@ function regenerateHp() {
             let changed = false;
             // Use map to create a new team array with updated HP
             const newTeam = player.team.map(genmon => {
-                 // Only heal if below max HP and not fainted (currentHp > 0)
-                 if (genmon.currentHp > 0 && genmon.currentHp < genmon.stats.hp) {
+                 // Check if HP not full
+                 if (genmon.currentHp < genmon.stats.hp) { // Keep this like that
                     // Create a copy to modify
                     const updatedGenmon = {...genmon};
                     updatedGenmon.currentHp = Math.min(updatedGenmon.stats.hp, updatedGenmon.currentHp + HEAL_AMOUNT);
                     changed = true;
                     return updatedGenmon;
                  }
-                 // Return original object if no change
+                 // Return original object if no change needed
                  return genmon;
             });
 
@@ -163,8 +166,8 @@ function regenerateHp() {
         const player = gameState.getPlayer(playerId); // Get potentially updated player data
         if (player && player.ws && player.ws.readyState === WebSocket.OPEN) {
             player.ws.send(JSON.stringify({
-                type: 'TEAM_UPDATE', // Use the standard team update message
-                payload: getPrivatePlayerData(playerId) // Send updated team and active index
+                type: 'PLAYER_DATA_UPDATE', // Use the general player data update message
+                payload: getPrivatePlayerData(playerId) // Send updated team, active index, and money
             }));
         }
     }

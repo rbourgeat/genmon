@@ -1,3 +1,5 @@
+const { calculateXpToNextLevel, INITIAL_LEVEL } = require('../game/leveling');
+
 // Helper to generate unique IDs (used locally and exported)
 function generateUniqueId() {
     return Math.random().toString(36).substring(2, 11);
@@ -9,10 +11,10 @@ const genmonData = {
         id: "Fluff01",
         name: "Flufflame",
         type: ["Fire"],
-        stats: { hp: 45, atk: 60, def: 40, spd: 70 },
+        stats: { hp: 45, atk: 60, def: 40, spd: 70 }, // Base stats at level 1 ideally
         moves: ["Fur Blaze", "Hot Pounce"],
         sprite: "/assets/flufflame.png",
-        description: "A small red-and-orange fox-like creature with a fluffy tail that glows like embers. It has big curious eyes, ember-tipped ears, and leaves fiery pawprints wherever it walks.",
+        description: "A pixel art of small red-and-orange fox-like creature with a fluffy tail that glows like embers. It has big curious eyes, ember-tipped ears, and leaves fiery pawprints wherever it walks.",
         catchRate: 180
     },
     "Aquaphin": {
@@ -22,7 +24,7 @@ const genmonData = {
         stats: { hp: 50, atk: 45, def: 55, spd: 60 },
         moves: ["Bubble Jet", "Tail Slap"],
         sprite: "/assets/aquaphin.png",
-        description: "A playful blue dolphin-like Genmon with glowing aqua fins and a crystal-like orb on its forehead. Its body shimmers like flowing water, and it can hover briefly using water jets.",
+        description: "A pixel art of a playful blue dolphin-like Genmon with glowing aqua fins and a crystal-like orb on its forehead. Its body shimmers like flowing water, and it can hover briefly using water jets.",
         catchRate: 190
     },
     "Thorncub": {
@@ -32,14 +34,24 @@ const genmonData = {
         stats: { hp: 55, atk: 50, def: 50, spd: 55 },
         moves: ["Vine Snap", "Leaf Dash"],
         sprite: "/assets/thorncub.png",
-        description: "A green cub-shaped Genmon with vines wrapping its legs and small leaves sprouting from its back. Its tail ends in a thorny bud, and it growls softly with a leafy crunch underfoot.",
+        description: "A pixel art of a green cub-shaped Genmon with vines wrapping its legs and small leaves sprouting from its back. Its tail ends in a thorny bud, and it growls softly with a leafy crunch underfoot.",
         catchRate: 170
     },
+    "Rockadillo": {
+        id: "Rock01",
+        name: "Rockadillo",
+        type: ["Normal", "Rock"],
+        stats: { hp: 65, atk: 55, def: 80, spd: 30 },
+        moves: ["Tail Slap", "Rock Throw"],
+        sprite: "/assets/rockadillo.png",
+        description: "A pixel art of a sturdy creature resembling an armadillo, with rocky plates covering its back.",
+        catchRate: 120
+    }
 };
 
 const moveData = {
     // Fire
-    "Fur Blaze": { power: 45, type: "Fire", accuracy: 100, priority: 0, effect: "May burn (10%)" }, 
+    "Fur Blaze": { power: 45, type: "Fire", accuracy: 100, priority: 0, effect: "May burn (10%)" },
     "Hot Pounce": { power: 50, type: "Fire", accuracy: 95, priority: 1 },
 
     // Water
@@ -49,26 +61,33 @@ const moveData = {
     "Vine Snap": { power: 45, type: "Grass", accuracy: 100, priority: 0, effect: "May cause flinch (10%)" },
     "Leaf Dash": { power: 50, type: "Grass", accuracy: 95, priority: 1 },
 
+    // Rock
+    "Rock Throw": { power: 50, type: "Rock", accuracy: 90, priority: 0 },
+
     // Placeholder for Catch action (used internally, not selectable)
     "Catch": { power: 0, type: "Normal", accuracy: 100, priority: 0, effect: "Attempt to catch" },
 };
 
 // --- Type Effectiveness ---
 const typeEffectiveness = {
-    "Fire": { "Grass": 2, "Water": 0.5, "Fire": 0.5, "Normal": 1 },
-    "Water": { "Fire": 2, "Water": 0.5, "Grass": 0.5, "Normal": 1 },
-    "Grass": { "Water": 2, "Fire": 0.5, "Grass": 0.5, "Normal": 1 },
-    "Normal": { "Fire": 1, "Water": 1, "Grass": 1, "Normal": 1 }, // Normal hits everything neutrally
+    "Fire": { "Grass": 2, "Water": 0.5, "Fire": 0.5, "Normal": 1, "Rock": 0.5 },
+    "Water": { "Fire": 2, "Water": 0.5, "Grass": 0.5, "Normal": 1, "Rock": 2 },
+    "Grass": { "Water": 2, "Fire": 0.5, "Grass": 0.5, "Normal": 1, "Rock": 2 },
+    "Normal": { "Fire": 1, "Water": 1, "Grass": 1, "Normal": 1, "Rock": 0.5 },
+    "Rock": { "Fire": 2, "Water": 1, "Grass": 1, "Normal": 1, "Rock": 1 },
     // Add other types as needed
 };
 
 // Function to get effectiveness multiplier and message
 function getEffectiveness(moveType, defenderTypes) {
     let multiplier = 1;
-    if (typeEffectiveness[moveType]) {
+    const primaryMoveType = typeEffectiveness[moveType];
+    if (primaryMoveType) {
         defenderTypes.forEach(defType => {
-            multiplier *= typeEffectiveness[moveType][defType] ?? 1; // Use 1 if type interaction undefined
+            multiplier *= primaryMoveType[defType] ?? 1; // Use 1 if type interaction undefined
         });
+    } else {
+        console.warn(`Effectiveness data missing for move type: ${moveType}`);
     }
 
     let message = null;
@@ -82,8 +101,9 @@ function getEffectiveness(moveType, defenderTypes) {
 // --- Damage Calculation ---
 // Returns object: { damage: number, effectivenessMessage: string | null }
 function calculateDamage(attackerGenmon, defenderGenmon, move) {
-    if (!move || !attackerGenmon || !defenderGenmon || move.power === 0) {
-        return { damage: 0, effectivenessMessage: null }; // No damage for non-power moves
+    if (!move || !attackerGenmon || !defenderGenmon || !attackerGenmon.stats || !defenderGenmon.stats || !attackerGenmon.level || !defenderGenmon.level || move.power === 0) {
+        console.warn("Missing data for damage calculation", { attackerGenmon, defenderGenmon, move });
+        return { damage: 0, effectivenessMessage: null };
     }
 
     // Accuracy Check
@@ -104,12 +124,13 @@ function calculateDamage(attackerGenmon, defenderGenmon, move) {
         return { damage: 0, effectivenessMessage: effectivenessMessage };
     }
 
-    // Simplified Damage Formula
-    // Using basic formula, can be expanded (Level, STAB, Critical Hits, etc.)
-    const attackStat = attackerGenmon.stats.atk || 10; // Use default if missing
+    // --- Slightly Improved Damage Formula (incorporating Level) ---
+    const levelFactor = (2 * attackerGenmon.level / 5) + 2;
+    const attackStat = attackerGenmon.stats.atk || 10;
     const defenseStat = defenderGenmon.stats.def || 10;
-    const baseDamage = ((attackStat / defenseStat) * move.power * 0.2) + 2; // Adjusted scaling
+    const baseDamage = (((levelFactor * move.power * (attackStat / defenseStat)) / 50) + 2);
     const randomFactor = (Math.random() * 0.15 + 0.85); // 85% to 100% damage randomness
+    // Add STAB (Same-type attack bonus) later if needed: * (attackerGenmon.type.includes(move.type) ? 1.5 : 1)
 
     let finalDamage = Math.floor(baseDamage * effectiveness * randomFactor);
 
@@ -118,7 +139,7 @@ function calculateDamage(attackerGenmon, defenderGenmon, move) {
          finalDamage = 1;
     }
 
-    console.log(`${attackerGenmon.name} (${attackStat} Atk) vs ${defenderGenmon.name} (${defenseStat} Def) using ${move.name} (Power ${move.power}, Type ${moveType}, Eff ${effectiveness}). Base: ${baseDamage.toFixed(1)}, Rand: ${randomFactor.toFixed(2)}, Final: ${finalDamage}`);
+    console.log(`${attackerGenmon.name} (Lvl ${attackerGenmon.level}, ${attackStat} Atk) vs ${defenderGenmon.name} (Lvl ${defenderGenmon.level}, ${defenseStat} Def) using ${move.name} (Power ${move.power}, Type ${moveType}, Eff ${effectiveness.toFixed(1)}). Base: ${baseDamage.toFixed(1)}, Rand: ${randomFactor.toFixed(2)}, Final: ${finalDamage}`);
 
     return { damage: finalDamage, effectivenessMessage: effectivenessMessage };
 }
@@ -134,7 +155,7 @@ function calculateCatchSuccess(wildGenmon) {
 
     // Formula inspired by Bulbapedia (simplified - ignores ball bonuses, status)
     // Calculate 'a' value
-    const hpFactor = (maxHp === 0) ? 1 : Math.max(1, (3 * maxHp - 2 * currentHp) / (3 * maxHp)); // Avoid division by zero, ensure factor >= 1? No, low HP increases chance. Max ensures > 0.
+    const hpFactor = (maxHp === 0) ? 1 : Math.max(0.1, (3 * maxHp - 2 * currentHp) / (3 * maxHp)); // Ensure HP factor doesn't go below 0.1
     const a = hpFactor * baseRate;
 
     // Calculate catch probability (simplified from shake checks)
@@ -151,8 +172,8 @@ function calculateCatchSuccess(wildGenmon) {
 
 
 // --- Create Genmon Instance ---
-// Creates a fresh copy of a Genmon with full HP and a unique ID.
-function createGenmonInstance(baseGenmonId) {
+// Creates a fresh copy of a Genmon with full HP, a unique ID, and initial level/XP.
+function createGenmonInstance(baseGenmonId, level = INITIAL_LEVEL) {
     const baseData = genmonData[baseGenmonId];
     if (!baseData) {
         console.error(`Genmon base data not found for ID: ${baseGenmonId}`);
@@ -161,8 +182,31 @@ function createGenmonInstance(baseGenmonId) {
     // Deep copy to prevent modifying the original data object
     const instance = JSON.parse(JSON.stringify(baseData));
 
-    // Ensure stats object exists
+    // Assign base stats (these are typically considered level 1 or level 50/100 bases)
     instance.stats = instance.stats || { hp: 30, atk: 30, def: 30, spd: 30 }; // Basic default stats
+    const baseStats = { ...instance.stats }; // Keep a copy of true base stats if needed for complex growth
+
+    // Initialize level and XP
+    instance.level = Math.max(1, level); // Ensure level is at least 1
+    instance.xp = 0; // Start with 0 XP towards the *next* level
+    instance.xpToNextLevel = calculateXpToNextLevel(instance.level); // Calculate XP needed for the next level
+
+    // Scale stats based on level (simple linear scaling for now)
+    // A more robust system would use base stats, IVs, EVs, and nature.
+    // This basic scaling assumes base stats are for level 1.
+    if (instance.level > 1) {
+         const levelMultiplier = 1 + (instance.level - 1) * 0.1; // +10% stats per level approx.
+         instance.stats.hp = Math.floor(baseStats.hp * levelMultiplier);
+         instance.stats.atk = Math.floor(baseStats.atk * levelMultiplier);
+         instance.stats.def = Math.floor(baseStats.def * levelMultiplier);
+         instance.stats.spd = Math.floor(baseStats.spd * levelMultiplier);
+    }
+     // Ensure stats are at least 1
+     instance.stats.hp = Math.max(1, instance.stats.hp);
+     instance.stats.atk = Math.max(1, instance.stats.atk);
+     instance.stats.def = Math.max(1, instance.stats.def);
+     instance.stats.spd = Math.max(1, instance.stats.spd);
+
 
     // Initialize currentHp to max HP
     instance.currentHp = instance.stats.hp;

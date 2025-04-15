@@ -26,12 +26,12 @@ const HEAL_AMOUNT = 1; // Heal 1 HP per interval
 const MAX_TEAM_SIZE = 6;
 const DUEL_MAX_DISTANCE = 3; // Max distance to initiate a duel
 
-// WebSocket Message Types (Optional but good practice)
-// const MSG_TYPE = {
-//     INIT: 'INIT',
-//     MOVE: 'MOVE',
-//     // ... add others
-// };
+// XP and Money
+const INITIAL_MONEY = 500;
+const INITIAL_LEVEL = 5; // Starting level for Genmon
+const BASE_XP_GAIN = 50; // Base XP for defeating a Genmon
+const DUEL_WIN_MONEY = 100; // Money earned for winning a PvP duel
+
 
 module.exports = {
     TILE_PATH,
@@ -45,4 +45,8 @@ module.exports = {
     HEAL_AMOUNT,
     MAX_TEAM_SIZE,
     DUEL_MAX_DISTANCE,
+    INITIAL_MONEY,
+    INITIAL_LEVEL,
+    BASE_XP_GAIN,
+    DUEL_WIN_MONEY,
 };

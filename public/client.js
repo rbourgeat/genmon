@@ -2,24 +2,32 @@
 const arenaMap = document.getElementById('arena-map'); // Rename? mapContainer?
 const connectionStatus = document.getElementById('connection-status');
 const playerInfoPanel = document.getElementById('player-info-panel'); // Contains team + active genmon info
+const playerMoneyDisplay = document.getElementById('player-money'); // New element for money
 const teamList = document.getElementById('team-list'); // New UL element for team
 const activeGenmonInfo = document.getElementById('active-genmon-info'); // Div for current active genmon details
 const activeGenmonName = document.getElementById('active-genmon-name');
+const activeGenmonLevel = document.getElementById('active-genmon-level'); // Add level display
 const activeGenmonHp = document.getElementById('active-genmon-hp');
 const activeGenmonMaxHp = document.getElementById('active-genmon-max-hp');
 const activeGenmonHpBar = document.getElementById('active-genmon-hp-bar');
+const activeGenmonXpBar = document.getElementById('active-genmon-xp-bar'); // Add XP bar display
+const activeGenmonXpText = document.getElementById('active-genmon-xp-text'); // Add XP text display
+
 
 const battleInterface = document.getElementById('battle-interface');
 const battlePlayerInfo = document.getElementById('battle-player-info'); // Player side in battle
 const battlePlayerGenmonName = document.getElementById('battle-player-genmon-name');
+const battlePlayerGenmonLevel = document.getElementById('battle-player-genmon-level'); // Add level
 const battlePlayerHp = document.getElementById('battle-player-hp');
 const battlePlayerMaxHp = document.getElementById('battle-player-max-hp');
 const battlePlayerHpBar = document.getElementById('battle-player-hp-bar');
+const battlePlayerXpBar = document.getElementById('battle-player-xp-bar'); // Add XP bar
 const battlePlayerSprite = document.getElementById('battle-player-sprite'); // Img element for player's genmon
 
 const battleOpponentInfo = document.getElementById('battle-opponent-info'); // Opponent side in battle
 const battleOpponentName = document.getElementById('battle-opponent-name'); // Wild name or Player ID
 const battleOpponentGenmonName = document.getElementById('battle-opponent-genmon-name');
+const battleOpponentGenmonLevel = document.getElementById('battle-opponent-genmon-level'); // Add level
 const battleOpponentHp = document.getElementById('battle-opponent-hp');
 const battleOpponentMaxHp = document.getElementById('battle-opponent-max-hp');
 const battleOpponentHpBar = document.getElementById('battle-opponent-hp-bar');
@@ -47,12 +55,13 @@ const declineDuelButton = document.getElementById('decline-duel-button');
 // --- Client State ---
 let ws;
 let playerId = null;
-let players = {}; // Store other players' data { id: { element, x, y, direction, sprite, ... } }
+let players = {}; // Store other players' data { id: { element, x, y, direction, sprite, genmonName, genmonLevel, ... } }
 let mapData = [];
 let mapWidth = 0;
 let mapHeight = 0;
 let cellSize = 40; // Should match CSS '.tile' width/height
 
+let myMoney = 0; // Store player money
 let myTeam = [];
 let myActiveGenmonIndex = 0;
 let myDirection = 'down';
@@ -111,7 +120,7 @@ function handleServerMessage(message) {
         case 'PLAYER_LEAVE':
             removePlayer(message.payload.playerId);
             break;
-        case 'PLAYER_UPDATE': // Handles movement, direction, sprite changes
+        case 'PLAYER_UPDATE': // Handles movement, direction, sprite, level changes
             updatePlayer(message.payload.player);
             break;
         case 'PLAYER_IN_BATTLE':
@@ -135,15 +144,15 @@ function handleServerMessage(message) {
              updateBattleUI(message.payload);
              break;
          case 'BATTLE_END':
-             endBattleUI(message.payload);
+             endBattleUI(message.payload); // Handles XP/money display
              break;
          case 'REQUEST_SWITCH':
              handleRequestSwitch(message.payload);
              break;
 
-         // Team Management
-         case 'TEAM_UPDATE': // Handles team changes, active index, HP regen
-             updateTeamData(message.payload.team, message.payload.activeGenmonIndex);
+         // Team/Player Data Management
+         case 'PLAYER_DATA_UPDATE': // Handles team changes, active index, HP regen, money updates
+             updatePlayerData(message.payload);
              break;
 
         // Duels
@@ -172,8 +181,8 @@ function initializeGame(payload) {
     console.log(`Initialized with ID: ${playerId}`);
 
     // Initialize with player's own data from payload.yourPlayer
-    updateTeamData(payload.yourPlayer.team, payload.yourPlayer.activeGenmonIndex);
-    myDirection = payload.yourPlayer.direction; // Assuming this is part of private data now
+    updatePlayerData(payload.yourPlayer); // Updates team, index, money
+    myDirection = payload.yourPlayer.direction || 'down'; // Assuming this is part of private data now
 
     // Render Map
     renderMap();
@@ -194,6 +203,7 @@ function resetGameState() {
     playerId = null;
     players = {};
     myTeam = [];
+    myMoney = 0;
     myActiveGenmonIndex = 0;
     mapData = [];
     inBattle = false;
@@ -210,6 +220,7 @@ function resetGameState() {
     // Remove player marker elements from the map
     Object.values(players).forEach(p => p.element?.remove());
     players = {};
+    playerMoneyDisplay.textContent = '---'; // Reset money display
 }
 
 // --- Map and Player Rendering ---
@@ -248,7 +259,7 @@ function addPlayer(playerData) {
 
     const img = document.createElement('img');
     img.src = playerData.sprite || '/assets/default_player.png'; // Initial sprite
-    img.alt = playerData.genmonName || playerData.id;
+    img.alt = `${playerData.genmonName || playerData.id} (Lvl ${playerData.genmonLevel || '?'})`; // Add level to alt text
     img.onerror = () => {
          console.warn(`Failed to load sprite: ${img.src} for ${playerData.id}`);
          img.src = '/assets/default_player.png';
@@ -257,15 +268,23 @@ function addPlayer(playerData) {
      };
      playerElement.appendChild(img);
 
+     // Add level display on marker
+     const levelDisplay = document.createElement('span');
+     levelDisplay.classList.add('player-level-display');
+     levelDisplay.textContent = `Lvl ${playerData.genmonLevel || '?'}`;
+     playerElement.appendChild(levelDisplay);
+
+
     arenaMap.appendChild(playerElement);
 
     players[playerData.id] = {
         ...playerData, // Store received data
         element: playerElement,
-        imgElement: img
+        imgElement: img,
+        levelElement: levelDisplay, // Store ref to level display
     };
 
-    // Immediately update position, direction, battle status
+    // Immediately update position, direction, battle status, level
     updatePlayerElement(players[playerData.id]);
 }
 
@@ -284,7 +303,7 @@ function updatePlayer(playerData) {
     // If player is self, update local state (mostly direction)
     if (playerData.id === playerId) {
         myDirection = playerData.direction;
-        // Team/active genmon updates come via TEAM_UPDATE
+        // Team/active genmon updates come via PLAYER_DATA_UPDATE
     }
 
     const player = players[playerData.id];
@@ -299,6 +318,7 @@ function updatePlayer(playerData) {
         player.inBattle = playerData.inBattle;
         player.sprite = playerData.sprite;
         player.genmonName = playerData.genmonName;
+        player.genmonLevel = playerData.genmonLevel; // Update level
 
         updatePlayerElement(player);
     }
@@ -313,10 +333,18 @@ function updatePlayerElement(player) {
 
      // Update sprite if necessary
      const targetSrc = new URL(player.sprite || '/assets/default_player.png', window.location.href).href;
+     const targetAlt = `${player.genmonName || player.id} (Lvl ${player.genmonLevel || '?'})`;
      if (player.imgElement.src !== targetSrc) {
           player.imgElement.src = targetSrc;
-          player.imgElement.alt = player.genmonName || player.id;
      }
+     if (player.imgElement.alt !== targetAlt) {
+         player.imgElement.alt = targetAlt;
+     }
+     // Update level display
+     if (player.levelElement) {
+        player.levelElement.textContent = `Lvl ${player.genmonLevel || '?'}`;
+     }
+
      // TODO: Add/remove direction classes based on player.direction
      // player.element.classList.remove('dir-up', 'dir-down', 'dir-left', 'dir-right');
      // player.element.classList.add(`dir-${player.direction}`);
@@ -350,11 +378,16 @@ function updatePlayersInBattle(playerIds, isInBattle) {
 }
 
 
-// --- Team Management UI ---
-// Handles TEAM_UPDATE messages
-function updateTeamData(team, activeIndex) {
-    myTeam = team || [];
-    myActiveGenmonIndex = activeIndex;
+// --- Team/Player Data Management UI ---
+// Handles PLAYER_DATA_UPDATE messages
+function updatePlayerData(payload) {
+    if (!payload) return;
+    myTeam = payload.team || [];
+    myActiveGenmonIndex = payload.activeGenmonIndex;
+    myMoney = payload.money;
+
+    // Update money display
+    playerMoneyDisplay.textContent = myMoney;
 
     // Update the team list display (used outside battle and for swap selection)
     renderTeamList();
@@ -380,20 +413,28 @@ function renderTeamList() {
         if (index === myActiveGenmonIndex) li.classList.add('active');
         if (genmon.currentHp <= 0) li.classList.add('fainted');
 
+        // Genmon Info Column
+        const infoDiv = document.createElement('div');
+        infoDiv.classList.add('team-member-info');
         const nameSpan = document.createElement('span');
-        nameSpan.textContent = `${genmon.name}`;
-
+        nameSpan.textContent = `${genmon.name} (Lvl ${genmon.level})`;
         const hpSpan = document.createElement('span');
         hpSpan.textContent = `HP: ${genmon.currentHp}/${genmon.stats.hp}`;
+        const xpSpan = document.createElement('span'); // Add XP display
+        const xpPercent = (genmon.xp / genmon.xpToNextLevel) * 100;
+        xpSpan.textContent = `XP: ${genmon.xp}/${genmon.xpToNextLevel} (${xpPercent.toFixed(1)}%)`;
+        infoDiv.appendChild(nameSpan);
+        infoDiv.appendChild(hpSpan);
+        infoDiv.appendChild(xpSpan); // Add XP to display
+        li.appendChild(infoDiv);
 
-        li.appendChild(nameSpan);
-        li.appendChild(hpSpan);
+
+        // Buttons Column
+        const buttonContainer = document.createElement('div');
+        buttonContainer.classList.add('team-buttons');
 
         // Add swap/release buttons only outside battle
         if (!inBattle) {
-            const buttonContainer = document.createElement('div');
-            buttonContainer.classList.add('team-buttons');
-
             if (index !== myActiveGenmonIndex && genmon.currentHp > 0) {
                 const swapBtn = createButton('Set Active', () => sendMessage('SWAP_GENMON_TEAM', { teamIndex: index }));
                 buttonContainer.appendChild(swapBtn);
@@ -406,8 +447,8 @@ function renderTeamList() {
                 }, 'release-button');
                 buttonContainer.appendChild(releaseBtn);
             }
-            li.appendChild(buttonContainer);
         }
+        li.appendChild(buttonContainer);
 
         teamList.appendChild(li);
     });
@@ -428,9 +469,13 @@ function createButton(text, onClick, className = null) {
 function updateActiveGenmonInfo(genmon) {
      if (genmon && !inBattle) { // Only show this panel when not in battle
          activeGenmonName.textContent = genmon.name;
+         activeGenmonLevel.textContent = genmon.level; // Update level
          activeGenmonHp.textContent = genmon.currentHp;
          activeGenmonMaxHp.textContent = genmon.stats.hp;
          updateHpBar(activeGenmonHpBar, genmon.currentHp, genmon.stats.hp);
+         // Update XP Bar and Text
+         updateXpBar(activeGenmonXpBar, genmon.xp, genmon.xpToNextLevel);
+         activeGenmonXpText.textContent = `XP: ${genmon.xp} / ${genmon.xpToNextLevel}`;
          activeGenmonInfo.style.display = 'block';
      } else {
          activeGenmonInfo.style.display = 'none'; // Hide if no active genmon or in battle
@@ -555,17 +600,25 @@ function setupBattleUI(type, isPlayer1, myGenmonData, opponentGenmonData, oppone
 // Update UI for one side of the battle ('player' or 'opponent')
 function updateBattleParticipantUI(side, genmon) {
     const nameEl = side === 'player' ? battlePlayerGenmonName : battleOpponentGenmonName;
+    const levelEl = side === 'player' ? battlePlayerGenmonLevel : battleOpponentGenmonLevel; // Get level element
     const hpEl = side === 'player' ? battlePlayerHp : battleOpponentHp;
     const maxHpEl = side === 'player' ? battlePlayerMaxHp : battleOpponentMaxHp;
     const hpBarEl = side === 'player' ? battlePlayerHpBar : battleOpponentHpBar;
-     const spriteEl = side === 'player' ? battlePlayerSprite : battleOpponentSprite;
-     const infoContainer = side === 'player' ? battlePlayerInfo : battleOpponentInfo;
+    const xpBarEl = side === 'player' ? battlePlayerXpBar : null; // Only player has XP bar in battle UI
+    const spriteEl = side === 'player' ? battlePlayerSprite : battleOpponentSprite;
+    const infoContainer = side === 'player' ? battlePlayerInfo : battleOpponentInfo;
 
     if (genmon && genmon.stats) { // Check genmon and stats exist
         nameEl.textContent = genmon.name || "???";
+        levelEl.textContent = genmon.level || "?"; // Update level display
         hpEl.textContent = typeof genmon.currentHp === 'number' ? genmon.currentHp : "-";
         maxHpEl.textContent = genmon.stats.hp || "-";
         updateHpBar(hpBarEl, genmon.currentHp, genmon.stats.hp);
+        // Update XP bar (only for player)
+        if (xpBarEl) {
+             updateXpBar(xpBarEl, genmon.xp, genmon.xpToNextLevel);
+        }
+
         // Update sprite
         const spriteSrc = genmon.sprite || '/assets/default_player.png';
         if (spriteEl.src !== spriteSrc) { // Avoid unnecessary reloads
@@ -579,9 +632,11 @@ function updateBattleParticipantUI(side, genmon) {
     } else { // Clear UI if no genmon data
         console.warn(`updateBattleParticipantUI called with invalid genmon data for side: ${side}`, genmon);
         nameEl.textContent = '-';
+        levelEl.textContent = '-'; // Clear level
         hpEl.textContent = '-';
         maxHpEl.textContent = '-';
         updateHpBar(hpBarEl, 0, 1);
+        if (xpBarEl) updateXpBar(xpBarEl, 0, 1); // Clear XP bar
         spriteEl.style.display = 'none';
         infoContainer.dataset.genmonUniqueId = ''; // Clear uniqueId
     }
@@ -628,7 +683,7 @@ function handleRequestSwitch(payload) {
      showTeamListForSwap(); // Highlight team list for selection
 }
 
-// Handles BATTLE_UPDATE messages - SIMPLIFIED LOGIC
+// Handles BATTLE_UPDATE messages
 function updateBattleUI(payload) {
     if (!inBattle || !currentBattle || payload.battleId !== currentBattle.id) return;
 
@@ -653,24 +708,33 @@ function updateBattleUI(payload) {
     let opponentGenmonChanged = false;
 
     if (myUpdateData && currentBattle.myGenmon?.uniqueId === myUpdateData.uniqueId) {
-        // Update HP if different
-        if (currentBattle.myGenmon.currentHp !== myUpdateData.currentHp) {
+        // Update HP/XP/Level if different
+        if (currentBattle.myGenmon.currentHp !== myUpdateData.currentHp ||
+            currentBattle.myGenmon.xp !== myUpdateData.xp ||
+            currentBattle.myGenmon.level !== myUpdateData.level) {
             currentBattle.myGenmon.currentHp = myUpdateData.currentHp;
+            currentBattle.myGenmon.xp = myUpdateData.xp;
+            currentBattle.myGenmon.level = myUpdateData.level;
+            currentBattle.myGenmon.xpToNextLevel = myUpdateData.xpToNextLevel;
+            currentBattle.myGenmon.stats = myUpdateData.stats; // Update stats too in case of level up
             myGenmonChanged = true;
         }
-    } else if (myUpdateData && payload.swapOccurred) { // My side swapped
+    } else if (myUpdateData && payload.swapOccurred && (!currentBattle.myGenmon || currentBattle.myGenmon.uniqueId !== myUpdateData.uniqueId)) { // My side swapped
         console.log("Updating local state for MY swap");
         currentBattle.myGenmon = JSON.parse(JSON.stringify(myUpdateData)); // Replace local object
         myGenmonChanged = true;
     }
 
      if (opponentUpdateData && currentBattle.opponentGenmon?.uniqueId === opponentUpdateData.uniqueId) {
-         // Update HP if different
-         if (currentBattle.opponentGenmon.currentHp !== opponentUpdateData.currentHp) {
+         // Update HP/Level if different (opponent XP not usually shown)
+         if (currentBattle.opponentGenmon.currentHp !== opponentUpdateData.currentHp ||
+             currentBattle.opponentGenmon.level !== opponentUpdateData.level) {
              currentBattle.opponentGenmon.currentHp = opponentUpdateData.currentHp;
+             currentBattle.opponentGenmon.level = opponentUpdateData.level;
+             currentBattle.opponentGenmon.stats = opponentUpdateData.stats; // Update stats
              opponentGenmonChanged = true;
          }
-     } else if (opponentUpdateData && payload.swapOccurred) { // Opponent side swapped
+     } else if (opponentUpdateData && payload.swapOccurred && (!currentBattle.opponentGenmon || currentBattle.opponentGenmon.uniqueId !== opponentUpdateData.uniqueId)) { // Opponent side swapped
           console.log("Updating local state for OPPONENT swap");
           currentBattle.opponentGenmon = JSON.parse(JSON.stringify(opponentUpdateData)); // Replace local object
          opponentGenmonChanged = true;
@@ -682,8 +746,7 @@ function updateBattleUI(payload) {
          updateBattleParticipantUI('player', currentBattle.myGenmon);
          flashElement(battlePlayerInfo); // Flash own side
      } else if (myUpdateData && !myGenmonChanged) {
-          // If data was received but didn't change HP or wasn't a swap for this side,
-          // still refresh UI in case other details (status?) changed later.
+          // Refresh UI even if no major change detected, just in case
           updateBattleParticipantUI('player', currentBattle.myGenmon);
       }
 
@@ -702,24 +765,89 @@ function endBattleUI(payload) {
      if (!inBattle || !currentBattle || payload.battleId !== currentBattle.id) return;
      console.log("Battle ended:", payload);
 
-    // Add final log messages if they aren't already there
+     let finalMessage = "Battle Over!";
+     const opponentNameToUse = currentBattle.opponentGenmon?.name || 'the Genmon';
+     const opponentLevelToUse = currentBattle.opponentGenmon?.level || '?';
+
+     // --- Process Rewards for this Player ---
+     if (payload.rewards && payload.rewards[playerId]) {
+          const myRewards = payload.rewards[playerId];
+          console.log("Received rewards:", myRewards);
+
+          // Update local money
+          if (myRewards.moneyGained > 0) {
+               myMoney += myRewards.moneyGained;
+               playerMoneyDisplay.textContent = myMoney; // Update display immediately
+               addLogMessage(`You earned $${myRewards.moneyGained}!`, 'win');
+          }
+
+          // Update local team data with XP/Level Ups
+          let teamUpdatedLocally = false;
+          myRewards.levelUps?.forEach(levelUpInfo => {
+               const genmonIndex = myTeam.findIndex(g => g.uniqueId === levelUpInfo.genmonUniqueId);
+               if (genmonIndex !== -1) {
+                    // Update the local team member directly
+                    myTeam[genmonIndex].level = levelUpInfo.newLevel;
+                    myTeam[genmonIndex].stats = levelUpInfo.newStats;
+                    myTeam[genmonIndex].currentHp = levelUpInfo.newCurrentHp;
+                    myTeam[genmonIndex].xp = levelUpInfo.currentXp;
+                    myTeam[genmonIndex].xpToNextLevel = levelUpInfo.xpToNext;
+                    addLogMessage(`${myTeam[genmonIndex].name} grew to Level ${levelUpInfo.newLevel}!`, 'win');
+                    // Could add stat gain details (+X Atk, etc.)
+                    flashElement(battlePlayerInfo); // Flash the player info on level up
+                    teamUpdatedLocally = true;
+               }
+          });
+          // Update XP for those who didn't level up
+           for (const uid in myRewards.xpGained) {
+                const genmonIndex = myTeam.findIndex(g => g.uniqueId === uid);
+                // Check if this genmon didn't already level up (levelUps is processed first)
+                if (genmonIndex !== -1 && !myRewards.levelUps?.some(l => l.genmonUniqueId === uid)) {
+                     myTeam[genmonIndex].xp += myRewards.xpGained[uid]; // Add XP gained
+                     addLogMessage(`${myTeam[genmonIndex].name} earned ${myRewards.xpGained[uid]} XP.`, 'info');
+                     teamUpdatedLocally = true;
+                } else if (genmonIndex !== -1) {
+                     // Already leveled up, XP was handled there, maybe just log total gain?
+                     // addLogMessage(`${myTeam[genmonIndex].name} earned ${myRewards.xpGained[uid]} XP.`, 'info');
+                }
+           }
+
+          // If local team was updated by rewards, refresh UI elements
+          if (teamUpdatedLocally) {
+               renderTeamList(); // Update main team list display
+               updateActiveGenmonInfo(myTeam[myActiveGenmonIndex]); // Update active info panel
+               // Update battle UI if still visible (for the final state)
+                if (currentBattle.myGenmon) {
+                     const currentBattleMonIndex = myTeam.findIndex(g => g.uniqueId === currentBattle.myGenmon.uniqueId);
+                     if (currentBattleMonIndex !== -1) {
+                          currentBattle.myGenmon = myTeam[currentBattleMonIndex]; // Sync battle object
+                          updateBattleParticipantUI('player', currentBattle.myGenmon);
+                     }
+                }
+          }
+     }
+      // NOTE: Server also sends PLAYER_DATA_UPDATE after battle end, which will re-sync everything.
+      // The local updates here provide immediate feedback.
+
+
+    // Add final outcome log messages if they aren't already there
     const existingMsgs = new Set(Array.from(battleLog.querySelectorAll('li')).map(li => li.textContent));
     payload.finalLog?.forEach(msg => {
-         if (!existingMsgs.has(msg)) {
+         // Avoid duplicating simple win/loss messages if already handled by rewards
+         const isRewardMsg = msg.includes("earned $") || msg.includes("XP.") || msg.includes("grew to Level");
+         if (!existingMsgs.has(msg) && !isRewardMsg) {
               addLogMessage(msg, payload.winnerId === playerId ? 'win' : (payload.loserId === playerId ? 'loss' : 'info'));
          }
      });
      scrollLogToBottom();
 
 
-    let finalMessage = "Battle Over!";
-    // Use local opponent name if available for catch message
-    const opponentNameToUse = currentBattle.opponentGenmon?.name || 'the Genmon';
-    if (payload.caught) finalMessage = `Caught ${opponentNameToUse}!`;
+    // Determine final banner message
+    if (payload.caught) finalMessage = `Caught ${opponentNameToUse} (Lvl ${opponentLevelToUse})!`;
     else if (payload.winnerId === playerId) finalMessage = "You won!";
     else if (payload.loserId === playerId) finalMessage = "You lost!";
     else if (payload.forfeited) finalMessage = payload.winnerId ? "Opponent forfeited/disconnected." : "You fled/disconnected.";
-    else finalMessage = "Battle ended."; // Draw/Error
+    else finalMessage = "Battle ended.";
 
 
     battleTurnIndicator.textContent = `Battle Over! ${finalMessage}`;
@@ -737,7 +865,6 @@ function endBattleUI(payload) {
          if (!inBattle) {
               battleInterface.style.display = 'none';
               playerInfoPanel.style.display = 'block'; // Show map info/team list again
-              // Server should send a TEAM_UPDATE after battle end to refresh team HP etc.
          }
     }, 5000); // Hide after 5 seconds
 }
@@ -760,8 +887,7 @@ function showActionButtons() {
     fightButton.disabled = currentBattle.myGenmon.currentHp <= 0;
     catchButton.disabled = (currentBattle.type !== 'PvE') || (currentBattle.myGenmon.currentHp <= 0);
     // Disable swap if no other healthy Genmon available
-    const canSwap = myTeam.some((g, index) => {
-         // Check if the Genmon is not the one currently in battle AND is healthy
+    const canSwap = myTeam.some((g) => {
          return g.uniqueId !== currentBattle.myGenmon.uniqueId && g.currentHp > 0;
      });
     swapButton.disabled = !canSwap || (currentBattle.myGenmon.currentHp <= 0);
@@ -853,12 +979,18 @@ function renderTeamListForSwap() {
             };
         }
 
+        // Genmon Info Column (Re-use rendering logic)
+        const infoDiv = document.createElement('div');
+        infoDiv.classList.add('team-member-info');
         const nameSpan = document.createElement('span');
-        nameSpan.textContent = `${genmon.name}`;
+        nameSpan.textContent = `${genmon.name} (Lvl ${genmon.level})`;
         const hpSpan = document.createElement('span');
         hpSpan.textContent = `HP: ${genmon.currentHp}/${genmon.stats.hp}`;
-        li.appendChild(nameSpan);
-        li.appendChild(hpSpan);
+        // Don't need XP display during swap selection probably
+        infoDiv.appendChild(nameSpan);
+        infoDiv.appendChild(hpSpan);
+        li.appendChild(infoDiv);
+
 
         teamList.appendChild(li);
     });
@@ -866,15 +998,21 @@ function renderTeamListForSwap() {
     // Remove previous cancel button if it exists
     document.querySelectorAll('.cancel-swap-button').forEach(btn => btn.remove());
 
-     const cancelBtn = createButton('Cancel Swap', () => {
-         if (currentBattle.selectingSwap) {
-             clearSwapSelectionUI();
-             showActionButtons(); // Go back to normal actions
-             battleTurnIndicator.textContent = "Choose an action.";
-         }
-     }, 'cancel-swap-button');
-     // Add cancel button after the team list within the player info panel
-     teamList.insertAdjacentElement('afterend', cancelBtn);
+     // Add cancel button only if it's a voluntary swap (not forced by faint)
+     const mustSwitch = (currentBattle.type === 'PvP' && ((playerId === currentBattle.player1Id && battle.p1MustSwitch) || (playerId === currentBattle.player2Id && battle.p2MustSwitch))) ||
+                      (currentBattle.type === 'PvE' && playerId === currentBattle.playerId && battle.p1MustSwitch);
+
+     if (!mustSwitch) {
+         const cancelBtn = createButton('Cancel Swap', () => {
+             if (currentBattle.selectingSwap) {
+                 clearSwapSelectionUI();
+                 showActionButtons(); // Go back to normal actions
+                 battleTurnIndicator.textContent = "Choose an action.";
+             }
+         }, 'cancel-swap-button');
+         // Add cancel button after the team list within the player info panel
+         teamList.insertAdjacentElement('afterend', cancelBtn);
+     }
 }
 
 
@@ -885,12 +1023,9 @@ function clearSwapSelectionUI() {
         playerInfoPanel.style.display = 'none';
      }
      document.getElementById('team-list-header').style.display = 'none'; // Hide header
-     teamList.querySelectorAll('.team-member').forEach(li => {
-         li.classList.remove('selectable-swap', 'disabled-swap', 'active'); // Remove swap classes, keep fainted
-         li.onclick = null; // Remove click listener
-     });
+     // Re-render standard team list to remove swap classes/listeners
+     renderTeamList();
      document.querySelectorAll('.cancel-swap-button').forEach(btn => btn.remove());
-     // Re-render standard team list if needed? No, TEAM_UPDATE handles it.
 }
 
 
@@ -915,7 +1050,6 @@ catchButton.onclick = () => {
 swapButton.onclick = () => {
     if (currentBattle.myTurn && currentBattle.waitingForAction) {
         const canSwap = myTeam.some((g) => {
-            // Check if the Genmon is not the one currently in battle AND is healthy
             return g.uniqueId !== currentBattle.myGenmon?.uniqueId && g.currentHp > 0;
         });
          if (canSwap) {
@@ -980,9 +1114,7 @@ function addLogMessage(message, type = 'normal') {
 }
 
 function scrollLogToBottom() {
-     // Use the container element for scrolling
      if (battleLogContainer) {
-        // Use setTimeout to allow the DOM to update before scrolling
         setTimeout(() => {
              battleLogContainer.scrollTop = battleLogContainer.scrollHeight;
         }, 0);
@@ -990,26 +1122,32 @@ function scrollLogToBottom() {
  }
 
 function updateHpBar(barElement, current, max) {
-    // Ensure values are numbers and max is positive
     const currentHp = typeof current === 'number' ? current : 0;
-    const maxHp = typeof max === 'number' && max > 0 ? max : 1; // Avoid division by zero
+    const maxHp = typeof max === 'number' && max > 0 ? max : 1;
     const percentage = Math.max(0, Math.min(100, (currentHp / maxHp) * 100));
 
     barElement.style.width = `${percentage}%`;
-    // Clear previous classes before adding new one
     barElement.classList.remove('low', 'medium', 'high');
     if (percentage <= 25) barElement.classList.add('low');
     else if (percentage <= 50) barElement.classList.add('medium');
-    else barElement.classList.add('high'); // Add a class for high HP for consistency
+    else barElement.classList.add('high');
 }
+
+// Add function to update XP bar
+function updateXpBar(barElement, current, max) {
+     if (!barElement) return;
+    const currentXp = typeof current === 'number' ? current : 0;
+    const maxXp = typeof max === 'number' && max > 0 ? max : 1; // XP to next level
+    const percentage = Math.max(0, Math.min(100, (currentXp / maxXp) * 100));
+    barElement.style.width = `${percentage}%`;
+}
+
 
 function flashElement(element) {
     if (!element) return;
-    element.classList.remove('flash'); // Remove class first to re-trigger animation
-    // Use void offsetWidth to force reflow, ensuring the class removal is processed before adding it back
+    element.classList.remove('flash');
     void element.offsetWidth;
     element.classList.add('flash');
-    // Remove the class after animation completes (match CSS duration)
     setTimeout(() => {
         element.classList.remove('flash');
      }, 300);
@@ -1034,7 +1172,7 @@ function showInfoMessage(message) {
           scrollLogToBottom();
      } else {
          // TODO: Implement a non-battle notification system (e.g., temporary toast message)
-         // Example: displayToast(message);
+         // For now, just log it.
      }
 }
 

@@ -1,6 +1,6 @@
 // Centralized game state
-let players = {}; // Store player data { id: { ws, x, y, direction, team: [genmonInstance...], activeGenmonIndex, inBattle, currentBattleId, ... } }
-let activeBattles = {}; // Stores state for ongoing battles { battleId: { type: 'PvP'/'PvE', player1Id, player2Id/wildGenmon, turn, log, ... } }
+let players = {}; // Store player data { id: { ws, x, y, direction, team: [genmonInstance...], activeGenmonIndex, money, inBattle, currentBattleId, ... } }
+let activeBattles = {}; // Stores state for ongoing battles { battleId: { type: 'PvP'/'PvE', player1Id, player2Id/wildGenmon, turn, log, participants: { playerId: [genmonUniqueId1, ...]}, ... } }
 
 function getPlayer(playerId) {
     return players[playerId];
